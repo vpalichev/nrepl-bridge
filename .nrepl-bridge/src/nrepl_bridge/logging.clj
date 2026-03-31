@@ -6,11 +6,17 @@
 
 (def ^:private log-dir ".workbench/logs")
 (def ^:private log-file (str log-dir "/nrepl-bridge.log"))
+(def ^:private dir-ensured? (atom false))
 
 (defn init!
   "Ensure log directory exists."
   []
-  (.mkdirs (java.io.File. log-dir)))
+  (.mkdirs (java.io.File. log-dir))
+  (reset! dir-ensured? true))
+
+(defn- ensure-dir! []
+  (when-not @dir-ensured?
+    (init!)))
 
 (defn- now-utc []
   (str (Instant/now)))
@@ -18,6 +24,7 @@
 (defn log!
   "Append a log line: [timestamp] [level] message"
   [level msg]
+  (ensure-dir!)
   (let [line (str "[" (now-utc) "] [" (str/upper-case (name level)) "] " msg "\n")]
     (spit log-file line :append true)))
 
