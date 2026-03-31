@@ -20,16 +20,29 @@ git clone D:\projects\nrepl-bridge D:\projects\my-new-app
 cd D:\projects\my-new-app
 
 # 2. Check out the golden image tag
-git checkout template/v3
+git checkout template/v4
 
 # 3. Start a fresh history (detach from template commits)
 git checkout --orphan main
-git commit -m "init: from nrepl-bridge template/v3"
+git commit -m "init: from nrepl-bridge template/v4"
 
-# 4. Drop the template remote
+# 4. Convert CLAUDE.md for downstream use and remove template-only files
+sed -e '/<!-- TEMPLATE-ONLY -->/,/<!-- \/TEMPLATE-ONLY -->/d' \
+    -e '/<!-- DOWNSTREAM-ONLY/d' \
+    -e '/DOWNSTREAM-ONLY -->/d' \
+    CLAUDE.md > CLAUDE.md.new && mv CLAUDE.md.new CLAUDE.md
+rm GIT-WORKFLOW.md
+git add -A
+git commit -m "chore: strip template-only content"
+
+# 5. Delete template tags (clean break from template history)
+git tag -l 'template/*' | xargs git tag -d
+git reflog expire --expire=now --all && git gc --prune=now
+
+# 6. Drop the template remote
 git remote remove origin
 
-# 5. (Optional) Point at your own remote
+# 7. (Optional) Point at your own remote
 git remote add origin https://github.com/you/my-new-app.git
 ```
 
@@ -77,8 +90,10 @@ git add .nrepl-bridge/ CLAUDE.md .mcp.json
 git commit -m "chore: update nrepl-bridge template/v2 -> template/v3"
 ```
 
-If the patch fails (you modified `.nrepl-bridge/` locally), use `git apply --3way`
-to get merge conflict markers that you can resolve manually.
+If the patch fails, use `git apply --3way` to get merge conflict markers that
+you can resolve manually. CLAUDE.md patches may fail near `<!-- TEMPLATE-ONLY -->`
+marker boundaries -- this is expected; those sections don't exist in downstream.
+Resolve by keeping your version of any conflicting lines near markers.
 
 ## Reporting a bug back to the template
 
@@ -123,12 +138,13 @@ the fix must always end up committed in `D:\projects\nrepl-bridge`.
 
 ### Version check
 
-The template version is recorded in two places:
+In the template repo, the version is recorded in two places:
 
-- `CLAUDE.md` -- "Current template version: **template/vN**"
+- `CLAUDE.md` (inside `<!-- TEMPLATE-ONLY -->` block) -- "Current template version: **template/vN**"
 - `.nrepl-bridge/ACTIVATION.md` -- "Template version: **template/vN**"
 
-Both must agree. After updating, verify they match the tag you pulled from.
+Both must agree. In downstream projects, only ACTIVATION.md carries the version
+(the CLAUDE.md version block is stripped during creation).
 
 ## Test suite
 

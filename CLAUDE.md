@@ -1,3 +1,4 @@
+<!-- TEMPLATE-ONLY -->
 # Project Instructions
 
 This is the **canonical source repository** for nrepl-bridge. It is not a
@@ -21,6 +22,16 @@ and consumed by downstream projects via the workflow in TEMPLATE.md.
   where documented). No exceptions.
 
 ---
+<!-- /TEMPLATE-ONLY -->
+<!-- DOWNSTREAM-ONLY
+# Project Instructions
+
+This project uses **nrepl-bridge** as vendored toolchain infrastructure.
+The `.nrepl-bridge/` directory is read-only — do not edit files inside it.
+See TEMPLATE.md for how to pull template updates from newer versions.
+
+---
+DOWNSTREAM-ONLY -->
 
 # nREPL Bridge (do not remove)
 
@@ -151,6 +162,7 @@ clj -M:nrepl
 ### Adding Dependencies
 Edit `deps.edn`. Shadow-cljs reads it via `:deps true`. No duplication needed.
 
+<!-- TEMPLATE-ONLY -->
 ## Template Versioning
 
 Current template version: **template/v4**
@@ -165,6 +177,7 @@ When creating a new template version:
 3. Update ACTIVATION.md if preflight checks changed
 
 Do NOT skip step 2. If the tag and this document disagree, the documentation is wrong.
+<!-- /TEMPLATE-ONLY -->
 
 ## Console Cyrillic
 
