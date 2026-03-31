@@ -4,7 +4,8 @@
    No cljfmt (not available in Babashka) -- eval forms don't need formatting."
   (:require [edamame.core :as edamame]
             [clojure.string :as str]
-            [nrepl-bridge.logging :as log]))
+            [nrepl-bridge.logging :as log]
+            [nrepl-bridge.nrepl-client :as nrepl-client]))
 
 (def ^:private delimiter-pairs
   {\( \) \[ \] \{ \}})
@@ -88,7 +89,7 @@
   "Full preprocessing pipeline: strip fences, check syntax, attempt repair.
    Returns {:form str :original str-or-nil :error str-or-nil}."
   [raw-form]
-  (let [stripped (nrepl-bridge.nrepl-client/strip-markdown-fences raw-form)
+  (let [stripped (nrepl-client/strip-markdown-fences raw-form)
         trimmed  (str/trim stripped)
         check    (check-syntax trimmed)]
     (if (:ok? check)

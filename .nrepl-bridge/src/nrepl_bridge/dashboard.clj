@@ -108,5 +108,5 @@
       "detail" (cmd-detail (second args))
       "tail"   (cmd-tail)
       (do
-        (println "Usage: bb -m dashboard <command>")
+        (println "Usage: bb -m nrepl-bridge.dashboard <command>")
         (println "Commands: recent, errors, stats, detail <id>, tail")))))

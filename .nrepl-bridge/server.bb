@@ -4,7 +4,7 @@
 ;; Launched by Claude Code as a stdio MCP server.
 ;; Exposes one tool: nrepl_send
 ;;
-;; Usage: bb .nrepl-bridge/server.bb --backend-port 17888 [--frontend-port 9000] [--shadow-build app]
+;; Usage: bb .nrepl-bridge/server.bb [--backend-port PORT] [--frontend-port PORT] [--shadow-build :app]
 
 (require '[babashka.pods :as pods]
          '[babashka.classpath :as cp])
@@ -143,7 +143,7 @@
   (check! "cli-args"
           (fn []
             (when-not (get-backend-port)
-              (throw (ex-info "No --backend-port specified" {})))
+              (throw (ex-info "nREPL port not yet available (will retry on first eval)" {})))
             (str "backend=" (get-backend-port)
                  (when (:frontend-port @config) (str " frontend=" (:frontend-port @config))))))
 

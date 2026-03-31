@@ -18,5 +18,8 @@ CREATE TABLE IF NOT EXISTS evals (
   ex             TEXT,
   eval_ms        INTEGER,
   dump_path      TEXT,
-  session_id     TEXT
+  session_id     TEXT,
+  decision       TEXT DEFAULT 'auto'
+                 CHECK (decision IN ('auto', 'pending', 'approved', 'rejected')),
+  feedback       TEXT
 );

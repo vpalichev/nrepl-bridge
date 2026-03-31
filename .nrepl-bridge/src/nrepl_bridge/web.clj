@@ -65,10 +65,10 @@
    [:td {:style "padding:8px;color:#aaa"} (or (:ns row) "user")]
    [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
          :title (:form row)}
-    (hu/raw-string (truncate (:form row) 80))]
+    (truncate (:form row) 80)]
    [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8f8"
          :title (or (:value row) "")}
-    (hu/raw-string (truncate (:value row) 60))]
+    (truncate (:value row) 60)]
    [:td {:style "padding:8px;color:#aaa;text-align:right"}
     (when (:eval_ms row) (str (:eval_ms row) "ms"))]
    [:td {:style "padding:8px;color:#666;font-size:12px"}
@@ -96,7 +96,7 @@
                     :style "background:#ef4444;color:#fff;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font-weight:bold"}
            "Reject"]]]
         [:pre {:style "color:#e0e0e0;margin:8px 0 0 0;font-size:13px;white-space:pre-wrap;word-break:break-all"}
-         (hu/raw-string (:form row))]])]))
+         (:form row)]])]))
 
 (defn- page-html
   "Render the full dashboard HTML page."
