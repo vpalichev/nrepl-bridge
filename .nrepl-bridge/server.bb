@@ -60,17 +60,28 @@
           (recur remaining opts))))))
 
 (defn- discover-nrepl-port
-  "Find the nREPL port automatically.
+  "Find a live nREPL port automatically.
    Priority: .nrepl-port (clj), .shadow-cljs/nrepl.port (shadow-cljs),
-   node_modules fallback."
+   node_modules fallback. Skips stale port files where nothing is listening."
   []
   (let [candidates [".nrepl-port"
                     ".shadow-cljs/nrepl.port"
-                    "node_modules/shadow-cljs-jar/.nrepl-port"]
-        found (first (filter #(.exists (java.io.File. %)) candidates))]
-    (when found
-      (log/log! :info (str "Discovered nREPL port from " found))
-      (parse-long (str/trim (slurp found))))))
+                    "node_modules/shadow-cljs-jar/.nrepl-port"]]
+    (some (fn [path]
+            (when (.exists (java.io.File. path))
+              (let [port (parse-long (str/trim (slurp path)))]
+                (if (nrepl/test-connection port 2000)
+                  (do (log/log! :info (str "Discovered live nREPL port " port " from " path))
+                      port)
+                  ;; DESTRUCTIVE: deletes stale port files so they don't mislead
+                  ;; future discovery attempts. Only deletes known nREPL port
+                  ;; file names — never arbitrary paths.
+                  (do (log/log! :warn (str "Stale port file " path " (port " port " not listening), deleting"))
+                      (let [filename (.getName (java.io.File. path))]
+                        (when (#{"nrepl.port" ".nrepl-port"} filename) ;; redundant safety check
+                          (.delete (java.io.File. path))))
+                      nil)))))
+          candidates)))
 
 (def config (atom (parse-args *command-line-args*)))
 
