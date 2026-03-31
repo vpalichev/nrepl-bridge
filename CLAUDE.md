@@ -1,6 +1,24 @@
 # Project Instructions
 
-<!-- Add your project-specific instructions here -->
+This is the **canonical source repository** for nrepl-bridge. It is not a
+project built on the template — it IS the template. Golden image tags
+(`template/v1`, `template/v2`, `template/v3`, ...) are cut from this repo
+and consumed by downstream projects via the workflow in TEMPLATE.md.
+
+## What that means for you (Claude)
+
+- You MAY edit files inside `.nrepl-bridge/` — that is the whole point of
+  this repo. In downstream projects, `.nrepl-bridge/` is read-only
+  infrastructure; here it is the primary deliverable.
+- Changes to bridge code, tests, docs, and schema happen here first.
+  Downstream projects pull updates via `git diff` between tags.
+- The app stub (`src/app/core.cljs`, `resources/public/index.html`) exists
+  only so `npx shadow-cljs watch app` compiles. It is not a real app.
+  Do not add application logic to it.
+- After any change to `.nrepl-bridge/`, run the bridge test suite to confirm
+  nothing broke (see TEMPLATE.md "Test suite" section).
+- Before tagging a new golden image, all 5 test scripts must pass (or SKIP
+  where documented). No exceptions.
 
 ---
 
