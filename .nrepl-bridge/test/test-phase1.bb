@@ -6,10 +6,10 @@
 ;; Unicode edge cases, SQL injection, frontend eval (requires browser).
 ;;
 ;; Prerequisites:
-;;   1. npx shadow-cljs watch app  (nREPL on 17888)
+;;   1. npx shadow-cljs watch app
 ;;   2. One browser tab on http://localhost:8280 (optional -- T1.16 skips without it)
 ;;
-;; Usage: bb .nrepl-bridge/test/test-phase1.bb [--backend-port 17888]
+;; Usage: bb .nrepl-bridge/test/test-phase1.bb [--backend-port PORT]
 
 (require '[cheshire.core :as json]
          '[clojure.string :as str]
@@ -20,12 +20,24 @@
 (pods/load-pod 'org.babashka/go-sqlite3 "0.3.13")
 (require '[pod.babashka.go-sqlite3 :as sqlite])
 
+;; --- Port discovery (same logic as server.bb) ---
+
+(defn- discover-port []
+  (some (fn [path]
+          (when (.exists (java.io.File. path))
+            (parse-long (str/trim (slurp path)))))
+        [".nrepl-port"
+         ".shadow-cljs/nrepl.port"
+         "node_modules/shadow-cljs-jar/.nrepl-port"]))
+
 ;; --- Config ---
 
 (def backend-port
   (or (some-> (second (drop-while #(not= % "--backend-port") *command-line-args*))
               parse-long)
-      17888))
+      (discover-port)
+      (do (println "FATAL: No nREPL port found. Start nREPL first or pass --backend-port.")
+          (System/exit 1))))
 
 ;; --- JSON-RPC framing ---
 

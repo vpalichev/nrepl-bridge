@@ -9,9 +9,9 @@
 ;; G5: Unsafe form is gated, times out (short timeout)
 ;; G6: Gate off by default (forms pass without gating)
 ;;
-;; Prerequisites: nREPL running on port 17888
+;; Prerequisites: nREPL running
 ;;
-;; Usage: bb nrepl-bridge/test-gate.bb [--backend-port 17888]
+;; Usage: bb .nrepl-bridge/test/test-gate.bb [--backend-port PORT]
 
 (require '[cheshire.core :as json]
          '[clojure.string :as str]
@@ -28,12 +28,24 @@
 
 (require '[nrepl-bridge.gate :as gate])
 
+;; --- Port discovery (same logic as server.bb) ---
+
+(defn- discover-port []
+  (some (fn [path]
+          (when (.exists (java.io.File. path))
+            (parse-long (str/trim (slurp path)))))
+        [".nrepl-port"
+         ".shadow-cljs/nrepl.port"
+         "node_modules/shadow-cljs-jar/.nrepl-port"]))
+
 ;; --- Config ---
 
 (def backend-port
   (or (some-> (second (drop-while #(not= % "--backend-port") *command-line-args*))
               parse-long)
-      17888))
+      (discover-port)
+      (do (println "FATAL: No nREPL port found. Start nREPL first or pass --backend-port.")
+          (System/exit 1))))
 
 (def dashboard-port 9501) ;; Use different port to avoid conflicts
 

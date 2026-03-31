@@ -4,21 +4,33 @@
 ;; Spawns the MCP server (which starts the dashboard on port 9500),
 ;; runs a few evals to populate data, then tests dashboard endpoints.
 ;;
-;; Prerequisites: nREPL running on port 17888
+;; Prerequisites: nREPL running
 ;;
-;; Usage: bb nrepl-bridge/test-dashboard.bb [--backend-port 17888]
+;; Usage: bb .nrepl-bridge/test/test-dashboard.bb [--backend-port PORT]
 
 (require '[cheshire.core :as json]
          '[clojure.string :as str]
          '[babashka.process :as proc]
          '[babashka.http-client :as http])
 
+;; --- Port discovery (same logic as server.bb) ---
+
+(defn- discover-port []
+  (some (fn [path]
+          (when (.exists (java.io.File. path))
+            (parse-long (str/trim (slurp path)))))
+        [".nrepl-port"
+         ".shadow-cljs/nrepl.port"
+         "node_modules/shadow-cljs-jar/.nrepl-port"]))
+
 ;; --- Config ---
 
 (def backend-port
   (or (some-> (second (drop-while #(not= % "--backend-port") *command-line-args*))
               parse-long)
-      17888))
+      (discover-port)
+      (do (println "FATAL: No nREPL port found. Start nREPL first or pass --backend-port.")
+          (System/exit 1))))
 
 (def dashboard-port 9500)
 (def base-url (str "http://localhost:" dashboard-port))
