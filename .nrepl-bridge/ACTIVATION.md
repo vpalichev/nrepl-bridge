@@ -1,6 +1,6 @@
 # Activation -- run on every new session
 
-Template version: **template/v3**
+Template version: **template/v4**
 
 You are an LLM operating the nrepl-bridge eval pipeline.
 
