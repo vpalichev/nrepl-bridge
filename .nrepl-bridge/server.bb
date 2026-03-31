@@ -87,9 +87,7 @@
 
 (defn- get-backend-port
   "Return the backend port, discovering lazily if not set.
-   Retries discovery on each call until a port is found.
-   ;; TODO: come up with a smarter way than checking files on every eval
-   ;; (e.g., file watcher, or exponential backoff retry)"
+   Retries discovery on each call until a port is found."
   []
   (or (:backend-port @config)
       (when-let [port (discover-nrepl-port)]

@@ -22,10 +22,18 @@
 
 ;; --- Port discovery (same logic as server.bb) ---
 
+(defn- port-alive? [port]
+  (try
+    (with-open [sock (doto (java.net.Socket.)
+                       (.connect (java.net.InetSocketAddress. "127.0.0.1" (int port)) 2000))]
+      true)
+    (catch Exception _ false)))
+
 (defn- discover-port []
   (some (fn [path]
           (when (.exists (java.io.File. path))
-            (parse-long (str/trim (slurp path)))))
+            (let [port (parse-long (str/trim (slurp path)))]
+              (when (port-alive? port) port))))
         [".nrepl-port"
          ".shadow-cljs/nrepl.port"
          "node_modules/shadow-cljs-jar/.nrepl-port"]))

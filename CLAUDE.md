@@ -2,7 +2,7 @@
 
 This is the **canonical source repository** for nrepl-bridge. It is not a
 project built on the template — it IS the template. Golden image tags
-(`template/v1`, `template/v2`, `template/v3`, ...) are cut from this repo
+(`template/v1`, `template/v2`, `template/v3`, `template/v4`, ...) are cut from this repo
 and consumed by downstream projects via the workflow in TEMPLATE.md.
 
 ## What that means for you (Claude)
@@ -157,7 +157,7 @@ Current template version: **template/v4**
 
 Golden image snapshots are stored as git tags (`template/v1`, `template/v2`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `master` branch is the working copy where the template evolves.
 
-To see what changed since the golden image: `git diff template/v3..master`
+To see what changed since the golden image: `git diff template/v4..master`
 
 When creating a new template version:
 1. Tag: `git tag template/vN`

@@ -92,7 +92,7 @@ Pass if result contains `"42"`. If runtime count is `0`, mark as SKIP and tell u
 Print this table filled in. No explanations, just the table:
 
 ```
-nrepl-bridge template/v3
+nrepl-bridge template/v4
 
 | # | Check | Result |
 |---|-------|--------|
