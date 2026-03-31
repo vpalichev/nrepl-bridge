@@ -132,11 +132,11 @@ Edit `deps.edn`. Shadow-cljs reads it via `:deps true`. No duplication needed.
 
 ## Template Versioning
 
-Current template version: **template/v2**
+Current template version: **template/v3**
 
-Golden image snapshots are stored as git tags (`template/v2`, `template/v2`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `main` branch is the working copy where the template evolves.
+Golden image snapshots are stored as git tags (`template/v3`, `template/v3`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `main` branch is the working copy where the template evolves.
 
-To see what changed since the golden image: `git diff template/v2..main`
+To see what changed since the golden image: `git diff template/v3..main`
 
 When creating a new template version:
 1. Tag: `git tag template/vN`
