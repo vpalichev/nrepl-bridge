@@ -85,6 +85,10 @@
 
 (def config (atom (parse-args *command-line-args*)))
 
+;; Remember whether the port was explicitly provided via CLI args.
+;; CLI ports are never invalidated; only auto-discovered ports are.
+(def ^:private cli-backend-port (:backend-port @config))
+
 (defn- get-backend-port
   "Return the backend port, discovering lazily if not set.
    Retries discovery on each call until a port is found."
@@ -93,6 +97,14 @@
       (when-let [port (discover-nrepl-port)]
         (swap! config assoc :backend-port port)
         port)))
+
+(defn- invalidate-backend-port!
+  "Clear discovered port so next call re-reads port files.
+   No-op if port was set via --backend-port CLI arg."
+  []
+  (when-not cli-backend-port
+    (swap! config dissoc :backend-port)
+    (log/log! :info "Cleared cached backend port; will re-discover on next eval")))
 
 ;; --- Startup self-check ---
 
@@ -319,24 +331,29 @@
                                    :ns eval-ns :timeout-ms timeout-ms
                                    :session session-id :id msg-id})
         ;; On connection error or value-swallowing corruption, re-clone and retry once
-        [result session-id]
-        (let [needs-reclone? (or (and (= "error" (:status result))
-                                      (= "ConnectException" (:ex result)))
-                                 (and (= "ok" (:status result))
-                                      (nil? (:value result))
-                                      (nil? (:err result))
-                                      (nil? (:out result))))]
-          (if needs-reclone?
+        [result session-id actual-port]
+        (let [conn-error? (and (= "error" (:status result))
+                               (= "ConnectException" (:ex result)))
+              empty-result? (and (= "ok" (:status result))
+                                 (nil? (:value result))
+                                 (nil? (:err result))
+                                 (nil? (:out result)))]
+          (if (or conn-error? empty-result?)
             (do
               (log/log! :warn (str "Session " session-id " for " target
-                                   " returned empty result, re-cloning"))
-              (let [new-sid (clone-target-session! target)
-                    new-mid (next-msg-id)
-                    retry   (nrepl/nrepl-eval {:port actual-port :code actual-form
-                                               :ns eval-ns :timeout-ms timeout-ms
-                                               :session new-sid :id new-mid})]
-                [retry new-sid]))
-            [result session-id]))
+                                   (if conn-error?
+                                     (str " connection refused on port " actual-port ", re-discovering")
+                                     " returned empty result, re-cloning")))
+              (when conn-error?
+                (invalidate-backend-port!))
+              (let [retry-port (get-backend-port)
+                    new-sid    (clone-target-session! target)
+                    new-mid    (next-msg-id)
+                    retry      (nrepl/nrepl-eval {:port retry-port :code actual-form
+                                                  :ns eval-ns :timeout-ms timeout-ms
+                                                  :session new-sid :id new-mid})]
+                [retry new-sid retry-port]))
+            [result session-id actual-port]))
         elapsed (- (System/currentTimeMillis) t0)
         dumped  (dump-large-result! eval-id (:value result))
         status  (:status result)]
