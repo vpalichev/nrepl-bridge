@@ -167,3 +167,4 @@ bare template. Copy and adapt them when building your app.
 | `template/v1` | Backend-only (clj -M:nrepl, no shadow-cljs)       |
 | `template/v2` | Full-stack: shadow-cljs as default REPL            |
 | `template/v3` | Test suite reorganized for bare template use       |
+| `template/v4` | Split src/ into src/clj, src/cljs, src/cljc        |
