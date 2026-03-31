@@ -12,7 +12,7 @@ and consumed by downstream projects via the workflow in TEMPLATE.md.
   infrastructure; here it is the primary deliverable.
 - Changes to bridge code, tests, docs, and schema happen here first.
   Downstream projects pull updates via `git diff` between tags.
-- The app stub (`src/app/core.cljs`, `resources/public/index.html`) exists
+- The app stub (`src/cljs/app/core.cljs`, `resources/public/index.html`) exists
   only so `npx shadow-cljs watch app` compiles. It is not a real app.
   Do not add application logic to it.
 - After any change to `.nrepl-bridge/`, run the bridge test suite to confirm
@@ -113,7 +113,9 @@ your-project/
   deps.edn                   -- all Clojure/Script dependencies
   shadow-cljs.edn            -- CLJS build config (:deps true reads deps.edn)
   package.json               -- shadow-cljs + react
-  src/                       -- your project source code
+  src/clj/                   -- JVM Clojure source (.clj)
+  src/cljs/                  -- ClojureScript source (.cljs)
+  src/cljc/                  -- shared source (.cljc)
   resources/public/index.html -- frontend entry point
   .nrepl-bridge/             -- bridge infrastructure (do not edit)
     server.bb                -- MCP server entrypoint

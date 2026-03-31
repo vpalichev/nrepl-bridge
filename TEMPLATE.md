@@ -39,7 +39,7 @@ After that:
 2. `npx shadow-cljs watch app`
 3. Open `http://localhost:8280` in a browser
 4. Start a Claude Code session -- ACTIVATION.md runs preflight checks automatically
-5. Write your app in `src/`, add dependencies to `deps.edn`
+5. Write your app in `src/clj/`, `src/cljs/`, `src/cljc/`, add dependencies to `deps.edn`
 6. Copy tests from `.nrepl-bridge/test/examples/` as a starting point for app-level tests
 
 ## Propagating template updates to existing projects
@@ -117,7 +117,7 @@ the fix must always end up committed in `D:\projects\nrepl-bridge`.
 | `.nrepl-bridge/`  | Yes                  | Bridge infrastructure -- do not edit      |
 | `CLAUDE.md`       | Partially            | Bridge section updates; your project section preserved |
 | `.mcp.json`       | Rarely               | Only if MCP registration format changes   |
-| `src/`            | Never                | Your application code                     |
+| `src/clj,cljs,cljc/` | Never            | Your application code                     |
 | `deps.edn`        | Never                | Your dependencies                         |
 | `shadow-cljs.edn` | Never                | Your build config                         |
 
