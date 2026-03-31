@@ -72,15 +72,18 @@
       (log/log! :info (str "Discovered nREPL port from " found))
       (parse-long (str/trim (slurp found))))))
 
-(def config
-  (let [parsed (parse-args *command-line-args*)]
-    (if (:backend-port parsed)
-      parsed
-      (if-let [port (discover-nrepl-port)]
-        (assoc parsed :backend-port port)
-        (do
-          (log/log! :error "No --backend-port and no .nrepl-port file found. Start nREPL first: clj -M:nrepl")
-          parsed)))))
+(def config (atom (parse-args *command-line-args*)))
+
+(defn- get-backend-port
+  "Return the backend port, discovering lazily if not set.
+   Retries discovery on each call until a port is found.
+   ;; TODO: come up with a smarter way than checking files on every eval
+   ;; (e.g., file watcher, or exponential backoff retry)"
+  []
+  (or (:backend-port @config)
+      (when-let [port (discover-nrepl-port)]
+        (swap! config assoc :backend-port port)
+        port)))
 
 ;; --- Startup self-check ---
 
@@ -97,7 +100,7 @@
 (defn- clone-target-session!
   "Clone a session for the given target. Updates !sessions atom. Returns session-id or nil."
   [target]
-  (let [port (:backend-port config)
+  (let [port (get-backend-port)
         sid  (nrepl/clone-session port 5000)]
     (swap! !sessions assoc (keyword target) sid)
     (log/log! :info (str "Session for " target ": " (or sid "FAILED")))
@@ -108,7 +111,7 @@
   [target]
   (let [kw  (keyword target)
         sid (get @!sessions kw)]
-    (if (and sid (nrepl/session-alive? (:backend-port config) sid 3000))
+    (if (and sid (nrepl/session-alive? (get-backend-port) sid 3000))
       sid
       (do
         (when sid
@@ -127,7 +130,7 @@
 (defn run-startup-checks! []
   (log/init!)
   (log/log! :info "=== nrepl-bridge starting ===")
-  (log/log! :info (str "Config: " (pr-str config)))
+  (log/log! :info (str "Config: " (pr-str @config)))
 
   (check! "bb-version"
           (fn []
@@ -139,10 +142,10 @@
 
   (check! "cli-args"
           (fn []
-            (when-not (:backend-port config)
+            (when-not (get-backend-port)
               (throw (ex-info "No --backend-port specified" {})))
-            (str "backend=" (:backend-port config)
-                 (when (:frontend-port config) (str " frontend=" (:frontend-port config))))))
+            (str "backend=" (get-backend-port)
+                 (when (:frontend-port @config) (str " frontend=" (:frontend-port @config))))))
 
   (check! "sqlite-db"
           (fn [] (db/init-db!)))
@@ -152,9 +155,9 @@
 
   (check! "backend-nrepl"
           (fn []
-            (if (nrepl/test-connection (:backend-port config) 2000)
-              (str "port " (:backend-port config) " reachable")
-              (throw (ex-info (str "Cannot connect to port " (:backend-port config)) {})))))
+            (if (nrepl/test-connection (get-backend-port) 2000)
+              (str "port " (get-backend-port) " reachable")
+              (throw (ex-info (str "Cannot connect to port " (get-backend-port)) {})))))
 
   (check! "backend-session"
           (fn []
@@ -162,14 +165,14 @@
               (str "session " sid)
               (throw (ex-info "Failed to clone backend nREPL session" {})))))
 
-  (when (:frontend-port config)
+  (when (:frontend-port @config)
     (check! "frontend-nrepl"
             (fn []
-              (if (nrepl/test-connection (:frontend-port config) 2000)
-                (str "port " (:frontend-port config) " reachable")
-                (throw (ex-info (str "Cannot connect to port " (:frontend-port config)) {}))))))
+              (if (nrepl/test-connection (:frontend-port @config) 2000)
+                (str "port " (:frontend-port @config) " reachable")
+                (throw (ex-info (str "Cannot connect to port " (:frontend-port @config)) {}))))))
 
-  (when (:frontend-port config)
+  (when (:frontend-port @config)
     (check! "frontend-session"
             (fn []
               (if-let [sid (clone-target-session! "frontend")]
@@ -365,16 +368,16 @@
         eval-ns    (or (:ns params) "user")
         timeout-ms (or (:timeout_ms params) 30000)
         port       (if (= target "frontend")
-                     (or (:frontend-port config) (:backend-port config))
-                     (:backend-port config))
+                     (or (:frontend-port @config) (get-backend-port))
+                     (get-backend-port))
         processed  (repair/process-form raw-form)
         form       (:form processed)
         original   (:original processed)
         error      (:error processed)
         actual-form (if (= target "frontend")
-                      (nrepl/wrap-frontend-form form (:shadow-build config))
+                      (nrepl/wrap-frontend-form form (:shadow-build @config))
                       form)
-        actual-port (if (= target "frontend") (:backend-port config) port)
+        actual-port (if (= target "frontend") (get-backend-port) port)
         session-id  (ensure-session! target)]
     (cond
       ;; Syntax error
@@ -393,11 +396,11 @@
          :isError true})
 
       ;; Gated form -- wait for approval
-      (and (:gate config) (= :gated (gate/classify-form form)))
+      (and (:gate @config) (= :gated (gate/classify-form form)))
       (let [eval-id  (db/insert-gated-eval! {:target target :port actual-port :ns eval-ns
                                              :form form :form-original original
                                              :session-id session-id})
-            decision (gate/wait-for-decision! eval-id (:gate-timeout-ms config))]
+            decision (gate/wait-for-decision! eval-id (:gate-timeout-ms @config))]
         (case decision
           :approved
           (execute-and-respond! {:eval-id eval-id :actual-port actual-port
@@ -476,11 +479,11 @@
 
 (future
   (try
-    (web/start! (:dashboard-port config))
+    (web/start! (:dashboard-port @config))
     (catch Exception e
       (log/log! :warn (str "Dashboard failed to start: " (.getMessage e))))))
 
-(log/log! :info (str "MCP server ready, dashboard at http://localhost:" (:dashboard-port config)))
+(log/log! :info (str "MCP server ready, dashboard at http://localhost:" (:dashboard-port @config)))
 
 (loop []
   (when-let [msg (try (read-message) (catch Exception e
