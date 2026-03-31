@@ -1,0 +1,21 @@
+# Runtime data (eval history, logs, dumps)
+.workbench/
+
+# Clojure build
+.cpcache/
+.clj-kondo/.cache/
+target/
+classes/
+
+# nREPL port file (written at startup, discovered by bridge)
+.nrepl-port
+
+# shadow-cljs (if frontend added)
+.shadow-cljs/
+node_modules/
+resources/public/js/
+
+# Editor
+*.iml
+.idea/
+.vscode/
