@@ -462,6 +462,8 @@
       (let [eval-id (db/insert-eval! {:target target :port actual-port :ns eval-ns
                                       :form form :form-original original
                                       :session-id session-id})]
+        (web/broadcast! {:type "eval-update" :id eval-id :status "evaluating"
+                         :target target})
         (execute-and-respond! {:eval-id eval-id :actual-port actual-port
                                :actual-form actual-form :eval-ns eval-ns
                                :timeout-ms timeout-ms :target target
