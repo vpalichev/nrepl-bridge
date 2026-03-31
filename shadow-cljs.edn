@@ -1,8 +1,7 @@
 {:deps   true
  :nrepl  {:port 0}
- :builds {:app {:target      :browser
-                :output-dir  "resources/public/js"
-                :asset-path  "/js"
-                :compiler-options {:optimizations :none}
-                :modules     {:main {:init-fn app.core/init}}
-                :devtools    {:after-load app.core/after-load}}}}
+ :builds {:app {:target    :browser
+                :output-dir "resources/public/js"
+                :asset-path "/js"
+                :modules   {:main {:init-fn app.core/init}}
+                :devtools  {:after-load app.core/after-load}}}}
