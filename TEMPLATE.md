@@ -80,6 +80,36 @@ git commit -m "chore: update nrepl-bridge template/v2 -> template/v3"
 If the patch fails (you modified `.nrepl-bridge/` locally), use `git apply --3way`
 to get merge conflict markers that you can resolve manually.
 
+## Reporting a bug back to the template
+
+If you find a bug in `.nrepl-bridge/` while working in a downstream project,
+the fix must end up in the template repo. Two approaches:
+
+### Option A: Fix in the template first (preferred)
+
+1. Open `D:\projects\nrepl-bridge`
+2. Make the fix in `.nrepl-bridge/`
+3. Run the bridge test suite (see "Test suite" below)
+4. Commit
+5. Pull the fix into your project using the "Apply the update" steps above
+
+The fix flows one direction: template -> projects. Clean and traceable.
+
+### Option B: Fix in your project, then backport
+
+Sometimes you find the bug mid-work and fix it on the spot. That's fine:
+
+1. Fix it in your project's `.nrepl-bridge/`
+2. Open `D:\projects\nrepl-bridge` and make the same fix manually
+3. Run the bridge test suite there
+4. Commit
+
+Don't use `git cherry-pick` across repos -- the histories are unrelated
+(the project was created with `--orphan`), so it won't apply cleanly.
+
+**The rule:** the template is the source of truth. Whichever option you use,
+the fix must always end up committed in `D:\projects\nrepl-bridge`.
+
 ### What gets updated
 
 | Path              | Updated by template? | Notes                                    |
