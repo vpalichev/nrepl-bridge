@@ -1,6 +1,6 @@
 # Activation -- run on every new session
 
-Template version: **template/v1**
+Template version: **template/v2**
 
 You are an LLM operating the nrepl-bridge eval pipeline.
 
@@ -91,7 +91,7 @@ Pass if result contains `"42"`. If runtime count is `0`, mark as SKIP and tell u
 Print this table filled in. No explanations, just the table:
 
 ```
-nrepl-bridge template/v1
+nrepl-bridge template/v2
 
 | # | Check | Result |
 |---|-------|--------|

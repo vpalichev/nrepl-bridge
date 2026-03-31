@@ -60,13 +60,16 @@
           (recur remaining opts))))))
 
 (defn- discover-nrepl-port
-  "Find the nREPL port from .nrepl-port files.
-   Checks project root first, then shadow-cljs location."
+  "Find the nREPL port automatically.
+   Priority: .nrepl-port (clj), .shadow-cljs/nrepl.port (shadow-cljs),
+   node_modules fallback."
   []
   (let [candidates [".nrepl-port"
+                    ".shadow-cljs/nrepl.port"
                     "node_modules/shadow-cljs-jar/.nrepl-port"]
         found (first (filter #(.exists (java.io.File. %)) candidates))]
     (when found
+      (log/log! :info (str "Discovered nREPL port from " found))
       (parse-long (str/trim (slurp found))))))
 
 (def config

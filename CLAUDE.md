@@ -12,11 +12,12 @@ A Babashka MCP server that gives you a shell-free path to evaluate Clojure and C
 
 ## Port Discovery
 
-The bridge finds the nREPL port automatically:
+The bridge finds the nREPL port automatically, checking in order:
 
 1. `--backend-port` CLI arg in `.mcp.json` (explicit override)
 2. `.nrepl-port` in project root (written by `clj -M:nrepl`)
-3. `node_modules/shadow-cljs-jar/.nrepl-port` (written by shadow-cljs)
+3. `.shadow-cljs/nrepl.port` (written by `npx shadow-cljs watch`)
+4. `node_modules/shadow-cljs-jar/.nrepl-port` (fallback)
 
 No hardcoded ports. Start nREPL, the bridge finds it.
 
@@ -91,8 +92,11 @@ your-project/
   .mcp.json                  -- MCP server registration (auto-discovery, no port needed)
   .gitignore                 -- excludes .workbench/, .nrepl-bridge is tracked
   CLAUDE.md                  -- this file
-  deps.edn                   -- your project dependencies + :nrepl alias
+  deps.edn                   -- all Clojure/Script dependencies
+  shadow-cljs.edn            -- CLJS build config (:deps true reads deps.edn)
+  package.json               -- shadow-cljs + react
   src/                       -- your project source code
+  resources/public/index.html -- frontend entry point
   .nrepl-bridge/             -- bridge infrastructure (do not edit)
     server.bb                -- MCP server entrypoint
     schema.sql               -- SQLite schema
@@ -106,28 +110,33 @@ your-project/
     dumps/eval-NNN.edn       -- full results for large evals
 ```
 
-## Supported Project Types
+## Starting the REPL
 
-### Backend-only (JVM Clojure)
-Start nREPL, the bridge auto-discovers the port:
+The default setup uses shadow-cljs, which provides a single process for both JVM Clojure and ClojureScript:
+
+```
+npm install          -- first time only
+npx shadow-cljs watch app
+```
+
+This starts nREPL (port auto-discovered by bridge), CLJS compilation, hot-reload, and a dev HTTP server.
+
+### Backend-only alternative
+For pure JVM Clojure without frontend:
 ```
 clj -M:nrepl
 ```
 
-### Full-stack (Clojure + ClojureScript)
-Add shadow-cljs to deps.edn and configure `.mcp.json` with `--shadow-build :app`.
-Frontend eval via `cljs-eval` through the backend nREPL.
-
 ### Adding Dependencies
-Edit `deps.edn` to add your project's libraries. The `:nrepl` alias provides the nREPL server. For shadow-cljs projects, add `thheller/shadow-cljs` to `:deps` and use shadow-cljs's embedded nREPL.
+Edit `deps.edn`. Shadow-cljs reads it via `:deps true`. No duplication needed.
 
 ## Template Versioning
 
-Current template version: **template/v1**
+Current template version: **template/v2**
 
-Golden image snapshots are stored as git tags (`template/v1`, `template/v2`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `main` branch is the working copy where the template evolves.
+Golden image snapshots are stored as git tags (`template/v2`, `template/v2`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `main` branch is the working copy where the template evolves.
 
-To see what changed since the golden image: `git diff template/v1..main`
+To see what changed since the golden image: `git diff template/v2..main`
 
 When creating a new template version:
 1. Tag: `git tag template/vN`

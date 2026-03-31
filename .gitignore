@@ -4,6 +4,7 @@
 # Clojure build
 .cpcache/
 .clj-kondo/.cache/
+.lsp/
 target/
 classes/
 
