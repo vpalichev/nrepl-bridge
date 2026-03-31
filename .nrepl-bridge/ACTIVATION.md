@@ -14,7 +14,7 @@ Run all steps below without asking the user. Report only the final table.
 nrepl_send {form: "(+ 1 2 3)"}
 ```
 
-Pass if result is `6`. If it fails with "Cannot connect to port 17888", tell the user: **"nREPL is not running. Start it with `npx shadow-cljs watch app`."** Stop here.
+Pass if result is `6`. If it fails with a connection error, tell the user: **"nREPL is not running. Start it with `npx shadow-cljs watch app`."** Stop here.
 
 ### Step 1: Shell bypass -- paths
 
@@ -101,7 +101,7 @@ nrepl-bridge template/v3
 | 3 | Cyrillic | |
 | 4 | Emoji + CJK | |
 | 5 | State persistence | |
-| 6 | Session isolation | |
+| 6 | Session recorded in SQLite | |
 | 7 | Frontend | |
 ```
 

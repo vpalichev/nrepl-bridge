@@ -103,6 +103,7 @@ your-project/
     diagnose.bb              -- troubleshooting tool
     src/nrepl_bridge/        -- server source
     test/                    -- bridge acceptance tests
+    test/examples/           -- example app-level tests (copy and adapt)
     ACTIVATION.md            -- session preflight checks
   .workbench/                -- runtime data (gitignored)
     db/toolchain.db          -- SQLite eval history
@@ -134,9 +135,9 @@ Edit `deps.edn`. Shadow-cljs reads it via `:deps true`. No duplication needed.
 
 Current template version: **template/v3**
 
-Golden image snapshots are stored as git tags (`template/v3`, `template/v3`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `main` branch is the working copy where the template evolves.
+Golden image snapshots are stored as git tags (`template/v1`, `template/v2`, etc.). Tags are immutable — they cannot be accidentally overwritten. The `master` branch is the working copy where the template evolves.
 
-To see what changed since the golden image: `git diff template/v3..main`
+To see what changed since the golden image: `git diff template/v3..master`
 
 When creating a new template version:
 1. Tag: `git tag template/vN`

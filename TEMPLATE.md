@@ -10,7 +10,7 @@ your application code.
 The split is: **scaffold** (the full template) becomes **vendored toolchain**
 (`.nrepl-bridge/`) + **application code** once the project starts evolving.
 The toolchain is versioned independently from your app via git tags
-(`template/v1`, `template/v2`, ...).
+(`template/v1`, `template/v2`, `template/v3`, ...).
 
 ## Starting a new project from the golden image
 
