@@ -66,9 +66,10 @@
    [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
          :title (:form row)}
     (truncate (:form row) 80)]
-   [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8f8"
-         :title (or (:value row) "")}
-    (truncate (:value row) 60)]
+   [:td {:style (str "padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:"
+                     (if (and (not (:value row)) (or (:err row) (:ex row))) "#f87171" "#8f8"))
+         :title (or (:value row) (:err row) "")}
+    (truncate (or (:value row) (:err row)) 60)]
    [:td {:style "padding:8px;color:#aaa;text-align:right"}
     (when (:eval_ms row) (str (:eval_ms row) "ms"))]
    [:td {:style "padding:8px;color:#666;font-size:12px"}

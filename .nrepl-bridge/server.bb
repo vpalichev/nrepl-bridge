@@ -302,6 +302,24 @@
            (str/join "\n" (mapv #(str "  FAIL: " (:name %) " -- " (:detail %)) failed))
            "\nEval may not work correctly."))))
 
+(def ^:private err-limit 500)
+
+(defn- summarize-err
+  "Trim verbose error output for the MCP response.
+   Full text is already persisted in the database."
+  [err eval-id]
+  (when err
+    (let [cleaned (-> err
+                      ;; #object[java.lang.ProcessImpl 0x1ee95ce7 "..."] → #<object>
+                      (str/replace #"#object\[[^\]]*\]" "#<object>")
+                      ;; hex stacktrace lines: \t0x7ff689... (Chrome/WebDriver dumps)
+                      (str/replace #"\t0x[0-9a-fA-F]+\n?" "")
+                      ;; collapse runs of blank lines
+                      (str/replace #"\n{3,}" "\n\n"))]
+      (if (> (count cleaned) err-limit)
+        (str (subs cleaned 0 err-limit) "\n... [full error in dashboard #" eval-id "]")
+        cleaned))))
+
 (def ^:private dump-threshold 32768)
 
 (defn- dump-large-result!
@@ -368,17 +386,18 @@
                     :dump-path (:dump-path dumped)})
     (web/broadcast! {:type "eval-update" :id eval-id :status status
                      :target target :eval-ms elapsed})
-    (let [parts (cond-> []
+    (let [err-summary (summarize-err (:err result) eval-id)
+          parts (cond-> []
                   original
                   (conj (str "[Paren repair applied]\nOriginal: " original "\nRepaired: " form))
                   (:out result)
                   (conj (str "stdout:\n" (:out result)))
                   (:value dumped)
                   (conj (:value dumped))
-                  (and (not (:value dumped)) (not (:err result)))
+                  (and (not (:value dumped)) (not err-summary))
                   (conj "nil")
-                  (:err result)
-                  (conj (str "stderr:\n" (:err result)))
+                  err-summary
+                  (conj (str "stderr:\n" err-summary))
                   (:ex result)
                   (conj (str "exception: " (:ex result))))
           text  (str/join "\n" parts)]

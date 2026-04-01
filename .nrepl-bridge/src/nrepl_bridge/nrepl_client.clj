@@ -77,7 +77,7 @@
             (if (status-done? (get resp "status"))
               (do
                 (log/log! :info "TCP disconnecting (done)")
-                (assoc result :status "ok"))
+                (assoc result :status (if (:ex result) "error" "ok")))
               (recur result))))))
     (catch ConnectException e
       (log/log! :error (str "ConnectException port=" port ": " (.getMessage e)))
