@@ -144,6 +144,29 @@
       (log/log! :error (str "Failed to clone session on port " port ": " (.getMessage e)))
       nil)))
 
+(defn interrupt-session!
+  "Send an nREPL interrupt op to cancel any running eval on a session.
+   Best-effort: returns true if the interrupt was acknowledged, false on error."
+  [port session timeout-ms]
+  (try
+    (log/log! :info (str "Interrupting session " session " on port " port))
+    (with-open [sock (doto (Socket. "127.0.0.1" (int port))
+                       (.setSoTimeout (int timeout-ms)))
+                out  (BufferedOutputStream. (.getOutputStream sock))
+                in   (PushbackInputStream. (.getInputStream sock))]
+      (bencode/write-bencode out {"op" "interrupt" "session" session})
+      (.flush out)
+      (loop []
+        (let [resp   (bencode/read-bencode in)
+              status (get resp "status")]
+          (if (status-done? status)
+            (do (log/log! :info (str "Interrupt acknowledged for session " session))
+                true)
+            (recur)))))
+    (catch Exception e
+      (log/log! :warn (str "Interrupt failed for session " session ": " (.getMessage e)))
+      false)))
+
 (defn session-alive?
   "Check if a session is still valid by evaluating a known form.
    Returns true only if the session responds with the expected value.

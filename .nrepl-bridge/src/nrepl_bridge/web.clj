@@ -10,6 +10,10 @@
             [nrepl-bridge.db :as db]
             [nrepl-bridge.logging :as log]))
 
+;; --- Build stamp (set by server.bb at startup) ---
+
+(def !build (atom nil))
+
 ;; --- WebSocket clients ---
 
 (def !ws-clients (atom #{}))
@@ -105,7 +109,7 @@
 
 (defn- page-html
   "Render the full dashboard HTML page."
-  [{:keys [evals stats duration pending status-filter]}]
+  [{:keys [evals stats duration pending status-filter build]}]
   (str
    "<!DOCTYPE html>"
    (h/html
@@ -135,7 +139,8 @@
       ")]]
      [:body
       [:div.container
-       [:h1 "nREPL Bridge Dashboard" [:span#live-dot]]
+       [:h1 "nREPL Bridge Dashboard" [:span#live-dot]
+        (when build [:span {:style "font-size:12px;color:#666;margin-left:12px;font-weight:normal"} (str "build " build)])]
 
        ;; Pending approvals (prominent, at top)
        (pending-section pending)
@@ -284,7 +289,8 @@
             duration (db/duration-stats)
             pending (db/pending-approvals)]
         (html-response (page-html {:evals evals :stats stats :duration duration
-                                   :pending pending :status-filter status-filter})))
+                                   :pending pending :status-filter status-filter
+                                   :build @!build})))
 
       ;; JSON API: evals list
       (and (= method :get) (= path "/api/evals"))

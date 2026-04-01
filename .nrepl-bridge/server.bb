@@ -128,16 +128,26 @@
     sid))
 
 (defn- ensure-session!
-  "Return a valid session for the target, re-cloning if necessary."
+  "Return a valid session for the target, re-cloning if necessary.
+   Interrupts a stuck session before re-cloning to avoid queue buildup."
   [target]
-  (let [kw  (keyword target)
-        sid (get @!sessions kw)]
-    (if (and sid (nrepl/session-alive? (get-backend-port) sid 3000))
-      sid
+  (let [kw   (keyword target)
+        sid  (get @!sessions kw)
+        port (get-backend-port)]
+    (if sid
       (do
-        (when sid
-          (log/log! :warn (str "Session " sid " for " target " is dead, re-cloning")))
-        (clone-target-session! target)))))
+        (log/log! :info (str "Checking session " sid " for " target "..."))
+        (let [t0    (System/currentTimeMillis)
+              alive (nrepl/session-alive? port sid 3000)
+              ms    (- (System/currentTimeMillis) t0)]
+          (log/log! :info (str "Session check for " target " took " ms "ms, alive=" alive))
+          (if alive
+            sid
+            (do
+              (log/log! :warn (str "Session " sid " for " target " is dead/stuck, interrupting"))
+              (nrepl/interrupt-session! port sid 2000)
+              (clone-target-session! target)))))
+      (clone-target-session! target))))
 
 (defn check! [name test-fn]
   (let [result (try
@@ -148,9 +158,12 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
+(def bridge-build "2026-04-01a")
+
 (defn run-startup-checks! []
   (log/init!)
-  (log/log! :info "=== nrepl-bridge starting ===")
+  (reset! web/!build bridge-build)
+  (log/log! :info (str "=== nrepl-bridge starting === build " bridge-build))
   (log/log! :info (str "Config: " (pr-str @config)))
 
   (check! "bb-version"
@@ -296,11 +309,13 @@
     :required ["form"]}})
 
 (defn startup-report []
-  (let [failed (filterv #(not (:passed? %)) @startup-checks)]
-    (when (seq failed)
-      (str "WARNING: Some startup checks failed:\n"
-           (str/join "\n" (mapv #(str "  FAIL: " (:name %) " -- " (:detail %)) failed))
-           "\nEval may not work correctly."))))
+  (let [failed (filterv #(not (:passed? %)) @startup-checks)
+        parts  (cond-> [(str "[nrepl-bridge build " bridge-build "]")]
+                 (seq failed)
+                 (conj (str "WARNING: Some startup checks failed:\n"
+                            (str/join "\n" (mapv #(str "  FAIL: " (:name %) " -- " (:detail %)) failed))
+                            "\nEval may not work correctly.")))]
+    (str/join "\n" parts)))
 
 (def ^:private err-limit 500)
 
