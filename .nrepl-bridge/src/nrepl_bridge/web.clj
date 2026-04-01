@@ -66,10 +66,14 @@
    [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
          :title (:form row)}
     (truncate (:form row) 80)]
-   [:td {:style (str "padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:"
-                     (if (and (not (:value row)) (or (:err row) (:ex row))) "#f87171" "#8f8"))
-         :title (or (:value row) (:err row) "")}
-    (truncate (or (:value row) (:err row)) 60)]
+   (let [evaluating? (= "evaluating" (:status row))]
+     [:td (cond-> {:style (str "padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:"
+                               (cond evaluating?                                          "#3b82f6"
+                                     (and (not (:value row)) (or (:err row) (:ex row)))   "#f87171"
+                                     :else                                                "#8f8"))
+                   :title (or (:value row) (:err row) "")}
+            evaluating? (assoc :class "elapsed" :data-started (:created_at row)))
+      (if evaluating? "" (truncate (or (:value row) (:err row)) 60))])
    [:td {:style "padding:8px;color:#aaa;text-align:right"}
     (when (:eval_ms row) (str (:eval_ms row) "ms"))]
    [:td {:style "padding:8px;color:#666;font-size:12px"}
@@ -208,6 +212,15 @@
           ws.onclose = function() { setTimeout(connectWs, 3000); };
         }
         connectWs();
+
+        // Live elapsed-seconds counter for in-flight evals
+        setInterval(function() {
+          document.querySelectorAll('.elapsed[data-started]').forEach(function(td) {
+            var started = new Date(td.getAttribute('data-started') + 'Z');
+            var secs = Math.round((Date.now() - started.getTime()) / 1000);
+            td.textContent = secs + 's elapsed\u2026';
+          });
+        }, 1000);
 
         // Auto-refresh every 30s as fallback
         setTimeout(function() { location.reload(); }, 30000);
