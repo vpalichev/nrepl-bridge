@@ -52,45 +52,54 @@
      :id         - message ID (optional, omitted if nil)"
   [{:keys [port code ns timeout-ms session id]
     :or   {ns "user" timeout-ms 30000}}]
-  (try
-    (log/log! :info (str "TCP connect 127.0.0.1:" port))
-    (with-open [sock (doto (Socket. "127.0.0.1" (int port))
-                       (.setSoTimeout (int timeout-ms)))
-                out  (BufferedOutputStream. (.getOutputStream sock))
-                in   (PushbackInputStream. (.getInputStream sock))]
-      (let [escaped (escape-non-ascii code)
-            msg (cond-> {"op" "eval" "code" escaped "ns" ns}
-                  session (assoc "session" session)
-                  id (assoc "id" id))]
-        (log/log! :info "TCP connected, sending eval")
-        (bencode/write-bencode out msg)
-        (.flush out)
-        (loop [result {:value nil :out nil :err nil :ex nil :ns nil}]
-          (let [resp (bencode/read-bencode in)
-                gs #(bytes->str (get resp %))
-                result (cond-> result
-                         (gs "value") (assoc :value (gs "value"))
-                         (gs "out") (update :out str (gs "out"))
-                         (gs "err") (update :err str (gs "err"))
-                         (gs "ex") (assoc :ex (gs "ex"))
-                         (gs "ns") (assoc :ns (gs "ns")))]
-            (if (status-done? (get resp "status"))
-              (do
-                (log/log! :info "TCP disconnecting (done)")
-                (assoc result :status (if (:ex result) "error" "ok")))
-              (recur result))))))
-    (catch ConnectException e
-      (log/log! :error (str "ConnectException port=" port ": " (.getMessage e)))
-      {:status "error" :ex "ConnectException"
-       :err (str "Connection refused on port " port ". Is nREPL running?")})
-    (catch SocketTimeoutException e
-      (log/log! :error (str "SocketTimeoutException port=" port " timeout=" timeout-ms))
-      {:status "timeout" :ex "SocketTimeoutException"
-       :err (str "Eval timed out after " timeout-ms "ms")})
-    (catch Exception e
-      (log/log! :error (str "Exception during eval: " (.getMessage e)))
-      {:status "error" :ex (str (class e))
-       :err (.getMessage e)})))
+  (let [sock (doto (Socket. "127.0.0.1" (int port))
+               (.setSoTimeout (int timeout-ms)))
+        ;; Hard deadline: force-close socket if eval exceeds timeout.
+        ;; Belt-and-suspenders for cases where setSoTimeout alone doesn't fire.
+        deadline (future
+                   (Thread/sleep (long (+ timeout-ms 5000)))
+                   (log/log! :warn (str "Hard deadline reached (" timeout-ms "+5000ms), closing socket"))
+                   (try (.close sock) (catch Exception _)))]
+    (try
+      (log/log! :info (str "TCP connect 127.0.0.1:" port))
+      (with-open [_ sock
+                  out  (BufferedOutputStream. (.getOutputStream sock))
+                  in   (PushbackInputStream. (.getInputStream sock))]
+        (let [escaped (escape-non-ascii code)
+              msg (cond-> {"op" "eval" "code" escaped "ns" ns}
+                    session (assoc "session" session)
+                    id (assoc "id" id))]
+          (log/log! :info "TCP connected, sending eval")
+          (bencode/write-bencode out msg)
+          (.flush out)
+          (loop [result {:value nil :out nil :err nil :ex nil :ns nil}]
+            (let [resp (bencode/read-bencode in)
+                  gs #(bytes->str (get resp %))
+                  result (cond-> result
+                           (gs "value") (assoc :value (gs "value"))
+                           (gs "out") (update :out str (gs "out"))
+                           (gs "err") (update :err str (gs "err"))
+                           (gs "ex") (assoc :ex (gs "ex"))
+                           (gs "ns") (assoc :ns (gs "ns")))]
+              (if (status-done? (get resp "status"))
+                (do
+                  (log/log! :info "TCP disconnecting (done)")
+                  (assoc result :status (if (:ex result) "error" "ok")))
+                (recur result))))))
+      (catch ConnectException e
+        (log/log! :error (str "ConnectException port=" port ": " (.getMessage e)))
+        {:status "error" :ex "ConnectException"
+         :err (str "Connection refused on port " port ". Is nREPL running?")})
+      (catch SocketTimeoutException e
+        (log/log! :error (str "SocketTimeoutException port=" port " timeout=" timeout-ms))
+        {:status "timeout" :ex "SocketTimeoutException"
+         :err (str "Eval timed out after " timeout-ms "ms")})
+      (catch Exception e
+        (log/log! :error (str "Exception during eval: " (.getMessage e)))
+        {:status "error" :ex (str (class e))
+         :err (.getMessage e)})
+      (finally
+        (future-cancel deadline)))))
 
 (defn wrap-frontend-form
   "Wrap a form for ClojureScript evaluation via shadow-cljs backend nREPL.
