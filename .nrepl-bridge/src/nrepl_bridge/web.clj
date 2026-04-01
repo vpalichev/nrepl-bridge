@@ -221,7 +221,8 @@
         // Live elapsed-seconds counter for in-flight evals
         setInterval(function() {
           document.querySelectorAll('.elapsed[data-started]').forEach(function(td) {
-            var started = new Date(td.getAttribute('data-started') + 'Z');
+            var ts = td.getAttribute('data-started').replace(/(\\.\\d{3})\\d*/, '$1').replace(/Z*$/, 'Z');
+            var started = new Date(ts);
             var secs = Math.round((Date.now() - started.getTime()) / 1000);
             td.textContent = secs + 's elapsed\u2026';
           });
