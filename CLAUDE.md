@@ -100,6 +100,20 @@ Etaoin executes WebDriver commands faster than the browser can render or complet
 
 Without pauses, you will read stale DOM state and tests will appear to fail.
 
+`e/query` throws an exception when an element is not found — it does NOT return nil. This is WebDriver protocol behavior (`findElement` returns HTTP 404 on miss). Use these patterns instead:
+
+```clojure
+;; BAD: throws "no such element" exception if missing
+(e/query driver {:css ".maybe-missing"})
+
+;; GOOD: returns nil if not found
+(first (e/query-all driver {:css ".maybe-missing"}))
+
+;; GOOD: boolean check before acting
+(when (e/exists? driver {:css ".maybe-missing"})
+  (e/click driver {:css ".maybe-missing"}))
+```
+
 ## Before Long-Running Operations
 
 Confirm with the user before any `nrepl_send` expected to take more than a few seconds. This includes: starting servers, running test suites, etaoin browser scenarios, large compilation cycles, dataset processing, blocking I/O against external services.
