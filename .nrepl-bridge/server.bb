@@ -158,7 +158,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02c")
+(def bridge-build "2026-04-02d")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -400,13 +400,17 @@
                                      " ex=" (:ex retry)))
                 [retry new-sid retry-port]))
             [result session-id actual-port]))
+        _       (log/log! :info (str "STEP1-POST-RETRY #" eval-id))
         elapsed (- (System/currentTimeMillis) t0)
+        _       (log/log! :info (str "STEP2-PRE-DUMP #" eval-id " value-len=" (count (:value result))))
         dumped  (dump-large-result! eval-id (:value result))
+        _       (log/log! :info (str "STEP3-PRE-DB #" eval-id))
         status  (:status result)]
     (db/update-eval! {:id eval-id :status status
                       :value (:value dumped) :out (:out result)
                       :err (:err result) :ex (:ex result)
                       :eval-ms elapsed :dump-path (:dump-path dumped)})
+    (log/log! :info (str "STEP4-POST-DB #" eval-id))
     (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
                     :form-length (count form) :form-preview form
                     :status status :eval-ms elapsed
