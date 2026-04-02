@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS evals (
                             (clojure.string/split schema #";")))]
     (sqlite/execute! db-path (str stmt ";")))
   (apply-migrations!)
-  (log/log! :info (str "SQLite initialized at " db-path))
+  ;; WAL mode + busy timeout reduce Windows file-locking contention
+  (sqlite/execute! db-path "PRAGMA journal_mode=WAL;")
+  (sqlite/execute! db-path "PRAGMA busy_timeout=5000;")
+  (log/log! :info (str "SQLite initialized at " db-path " (WAL mode, busy_timeout=5000)"))
   db-path)
 
 (defn resolve-orphaned-evals!
@@ -79,24 +82,53 @@ CREATE TABLE IF NOT EXISTS evals (
                         ts])
       (log/log! :info (str "Resolved " (count rows) " orphaned evaluating rows")))))
 
+(def ^:private db-write-timeout-ms 3000)
+
+(defn- with-db-timeout
+  "Execute f with a hard deadline. Returns f's result on success,
+   or {:db-timeout true} if the pod doesn't respond in time."
+  [label f]
+  (let [sentinel (Object.)
+        fut (future (try (f) (catch Exception e {:db-error (.getMessage e)})))
+        result (deref fut db-write-timeout-ms sentinel)]
+    (if (identical? result sentinel)
+      (do
+        (log/log! :error (str "DB WRITE TIMEOUT (" db-write-timeout-ms "ms) on " label
+                              " — go-sqlite3 pod is stuck. MCP response will proceed without persistence."))
+        (future-cancel fut)
+        {:db-timeout true})
+      (if (and (map? result) (:db-error result))
+        (do (log/log! :error (str "DB WRITE ERROR on " label ": " (:db-error result)))
+            result)
+        result))))
+
 (defn insert-eval!
-  "Insert a new eval row with status 'evaluating'. Returns the row id."
+  "Insert a new eval row with status 'evaluating'. Returns the row id.
+   Returns a negative temp ID if the pod times out."
   [{:keys [target port ns form form-original session-id intent]}]
-  (let [ts (now-utc)
-        rows (sqlite/query db-path
-                           ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
+  (let [result (with-db-timeout "insert-eval!"
+                 (fn []
+                   (let [ts (now-utc)
+                         rows (sqlite/query db-path
+                                            ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
        VALUES (?, ?, ?, ?, ?, ?, 'evaluating', ?, ?) RETURNING id"
-                            ts target port ns form form-original session-id intent])]
-    (:id (first rows))))
+                                             ts target port ns form form-original session-id intent])]
+                     (:id (first rows)))))]
+    (if (and (map? result) (:db-timeout result))
+      (- (System/currentTimeMillis))  ;; negative temp ID
+      result)))
 
 (defn update-eval!
-  "Update an eval row with results."
+  "Update an eval row with results. No-op for negative (temp) IDs from timed-out inserts."
   [{:keys [id status value out err ex eval-ms dump-path]}]
-  (let [ts (now-utc)]
-    (sqlite/execute! db-path
-                     ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
+  (when (and id (pos? id))
+    (with-db-timeout "update-eval!"
+      (fn []
+        (let [ts (now-utc)]
+          (sqlite/execute! db-path
+                           ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
        WHERE id=?"
-                      ts status value out err ex eval-ms dump-path id])))
+                            ts status value out err ex eval-ms dump-path id]))))))
 
 (defn recent-evals
   "Return last n evals, most recent first."
