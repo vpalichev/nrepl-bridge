@@ -118,6 +118,25 @@
 (defn- next-msg-id []
   (str "nrepl-bridge-" (swap! !msg-counter inc)))
 
+(def ^:private etaoin-extras-code
+  (try
+    (let [f (java.io.File. (str script-dir "/src/nrepl_bridge/etaoin_extras.clj"))]
+      (when (.exists f)
+        (slurp f)))
+    (catch Exception _ nil)))
+
+(defn- inject-etaoin-extras!
+  "Load etaoin-extras into the JVM nREPL session. Best-effort, no-op if etaoin is absent."
+  [port session-id]
+  (when etaoin-extras-code
+    (let [result (nrepl/nrepl-eval {:port port :code etaoin-extras-code
+                                    :ns "user" :timeout-ms 10000
+                                    :session session-id})]
+      (if (= "ok" (:status result))
+        (log/log! :info "Injected etaoin-extras into session")
+        (log/log! :info (str "etaoin-extras not loaded (etaoin may not be on classpath): "
+                             (:err result)))))))
+
 (defn- clone-target-session!
   "Clone a session for the given target. Updates !sessions atom. Returns session-id or nil."
   [target]
@@ -125,6 +144,8 @@
         sid  (nrepl/clone-session port 5000)]
     (swap! !sessions assoc (keyword target) sid)
     (log/log! :info (str "Session for " target ": " (or sid "FAILED")))
+    (when (and sid (= "backend" (name target)))
+      (inject-etaoin-extras! port sid))
     sid))
 
 (defn- ensure-session!
@@ -158,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02f")
+(def bridge-build "2026-04-02g")
 
 (defn run-startup-checks! []
   (log/init!)
