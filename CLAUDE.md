@@ -83,10 +83,27 @@ Run this verification sequence. Do not skip steps.
 
 1. Confirm the paren repair hook fired (check tool output for "hook succeeded")
 2. Run clj-kondo as a library: `(clj-kondo.core/run! {:lint ["path/to/file.clj"]})`
-3. Require the namespace: `(require '[the.namespace] :reload)`
+3. Reload changed namespaces in dependency order using clj-reload (see below)
 4. Test pure functions adversarially with edge cases through `nrepl_send`
 
 A clean paren repair does not mean the code is correct. Structural validity and semantic validity are independent.
+
+## Reloading Namespaces
+
+Do NOT use `(require ... :reload)` directly when multiple files changed — you will get load-order errors if namespace A depends on namespace B and you reload A first.
+
+Use clj-reload instead. It analyzes the dependency graph and reloads changed files in the correct order:
+
+```clojure
+;; One-time init (once per REPL session):
+(require '[clj-reload.core :as reload])
+(reload/init {:dirs ["src/clj" "src/cljc" "src/cljs"]})
+
+;; After any file edit — reloads only changed files, in dependency order:
+(reload/reload)
+```
+
+Use `(reload/reload)` in step 3 above instead of manual `require :reload`. It handles all dependency ordering automatically.
 
 ## Etaoin Browser Testing
 
