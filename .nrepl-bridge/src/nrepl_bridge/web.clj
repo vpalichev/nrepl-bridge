@@ -59,10 +59,25 @@
                           "border-radius:4px;font-size:11px;margin-left:4px")}
        (hu/raw-string decision)])))
 
+(defn- escape-attr
+  "Escape a string for use in an HTML data attribute."
+  [s]
+  (when s
+    (-> s
+        (str/replace "&" "&amp;")
+        (str/replace "\"" "&quot;")
+        (str/replace "<" "&lt;")
+        (str/replace ">" "&gt;"))))
+
 (defn- eval-row-html [row]
   [:tr {:id (str "eval-" (:id row))
-        :style "border-bottom:1px solid #333"}
-   [:td {:style "padding:8px;color:#888"} (str "#" (:id row))]
+        :style "border-bottom:1px solid #333"
+        :data-form (escape-attr (:form row))
+        :data-result (escape-attr (or (:value row) (:err row) ""))
+        :data-status (:status row)
+        :data-eval-id (str (:id row))}
+   [:td {:style "padding:8px;color:#888"} (str "#" (:id row))
+    [:button {:class "copy-btn" :onclick (str "copyRow(this.closest('tr'))")} "copy"]]
    [:td {:style "padding:8px"} (status-badge (:status row))
     (decision-badge (:decision row))]
    [:td {:style "padding:8px;color:#aaa"} (:target row)]
@@ -134,6 +149,10 @@
         th { text-align: left; padding: 8px; color: #888; border-bottom: 2px solid #333; font-size: 13px; }
         #live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-left: 8px; animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        tr { position: relative; }
+        tr .copy-btn { opacity: 0; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); cursor: pointer; background: #333; border: 1px solid #555; color: #aaa; border-radius: 4px; padding: 2px 6px; font-size: 11px; transition: opacity 0.15s; z-index: 1; }
+        tr:hover .copy-btn { opacity: 1; }
+        tr .copy-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
         .log-section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-top: 24px; }
         .log-section pre { color: #aaa; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
       ")]]
@@ -180,6 +199,24 @@
 
        ;; JavaScript
        [:script (hu/raw-string "
+        // Copy eval row to clipboard
+        function copyRow(tr) {
+          var id = tr.getAttribute('data-eval-id');
+          var status = tr.getAttribute('data-status');
+          var form = tr.getAttribute('data-form') || '';
+          var result = tr.getAttribute('data-result') || '';
+          var elapsed = tr.querySelector('.elapsed');
+          var ms = tr.querySelector('td:nth-child(7)');
+          var timing = elapsed ? elapsed.textContent : (ms ? ms.textContent : '');
+          var text = '#' + id + ' [' + status + ']' + (timing ? ' ' + timing : '') + '\\n> ' + form;
+          if (result) text += '\\n' + result;
+          navigator.clipboard.writeText(text).then(function() {
+            var btn = tr.querySelector('.copy-btn');
+            btn.textContent = 'done';
+            setTimeout(function() { btn.textContent = 'copy'; }, 1000);
+          });
+        }
+
         // Fetch and display logs
         function loadLogs() {
           fetch('/api/logs').then(r => r.json()).then(data => {
