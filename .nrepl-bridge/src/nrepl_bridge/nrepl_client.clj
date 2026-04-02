@@ -84,7 +84,12 @@
               (if (status-done? (get resp "status"))
                 (do
                   (log/log! :info "TCP disconnecting (done)")
-                  (assoc result :status (if (:ex result) "exception" "ok")))
+                  (assoc result :status
+                         (cond
+                           (nil? (:ex result)) "ok"
+                           (and (:err result) (str/includes? (:err result) "ClassNotFoundException"))
+                           "class-not-found"
+                           :else "exception")))
                 (recur result))))))
       (catch ConnectException e
         (log/log! :error (str "ConnectException port=" port ": " (.getMessage e)))

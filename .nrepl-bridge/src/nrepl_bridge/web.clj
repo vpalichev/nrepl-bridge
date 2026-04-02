@@ -40,6 +40,7 @@
                 "ok"           "#22c55e"
                 "error"        "#ef4444"
                 "exception"    "#f97316"
+                "class-not-found" "#e879f9"
                 "timeout"      "#f59e0b"
                 "syntax-error" "#f97316"
                 "pending"      "#8b5cf6"
@@ -182,6 +183,7 @@
         [:a {:href "/?status=ok" :class (when (= status-filter "ok") "active")} "OK"]
         [:a {:href "/?status=error" :class (when (= status-filter "error") "active")} "Errors"]
         [:a {:href "/?status=exception" :class (when (= status-filter "exception") "active")} "Exceptions"]
+        [:a {:href "/?status=class-not-found" :class (when (= status-filter "class-not-found") "active")} "Missing Class"]
         [:a {:href "/?status=timeout" :class (when (= status-filter "timeout") "active")} "Timeouts"]
         [:a {:href "/?status=syntax-error" :class (when (= status-filter "syntax-error") "active")} "Syntax"]]
 
