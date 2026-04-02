@@ -192,6 +192,15 @@
        [:h1 "nREPL Bridge Dashboard" [:span#live-dot]
         (when build [:span {:style "font-size:12px;color:#666;margin-left:12px;font-weight:normal"} (str "build " build)])]
 
+       ;; Missed writes warning
+       (let [missed @db/missed-write-count]
+         (when (pos? missed)
+           [:div {:style "background:#451a03;border:2px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px"}
+            [:span {:style "font-size:20px"} "!"]
+            [:div
+             [:div {:style "color:#fbbf24;font-weight:bold"} (str missed " missed DB write" (when (> missed 1) "s") " — pod timeout")]
+             [:div {:style "color:#d97706;font-size:12px"} (str "Records saved to .workbench/db/missed-writes.edn — review and re-import if needed")]]]))
+
        ;; Pending approvals (prominent, at top)
        (pending-section pending)
 
