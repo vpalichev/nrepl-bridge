@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02l")
+(def bridge-build "2026-04-02m")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -431,18 +431,20 @@
         dumped  (dump-large-result! eval-id (:value result))
         _       (log/log! :info (str "STEP3-PRE-DB #" eval-id))
         status  (:status result)]
-    (db/update-eval! {:id eval-id :status status
-                      :value (:value dumped) :out (:out result)
-                      :err (:err result) :ex (:ex result)
-                      :eval-ms elapsed :dump-path (:dump-path dumped)})
-    (log/log! :info (str "STEP4-POST-DB #" eval-id))
-    (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
-                    :form-length (count form) :form-preview form
-                    :status status :eval-ms elapsed
-                    :repaired? (boolean original)
-                    :dump-path (:dump-path dumped)})
-    (web/broadcast! {:type "eval-update" :id eval-id :status status
-                     :target target :eval-ms elapsed})
+    (let [db-result (db/update-eval! {:id eval-id :status status
+                                      :value (:value dumped) :out (:out result)
+                                      :err (:err result) :ex (:ex result)
+                                      :eval-ms elapsed :dump-path (:dump-path dumped)})
+          db-timed-out? (and (map? db-result) (:db-timeout db-result))]
+      (log/log! :info (str "STEP4-POST-DB #" eval-id (when db-timed-out? " [DB TIMEOUT]")))
+      (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
+                      :form-length (count form) :form-preview form
+                      :status status :eval-ms elapsed
+                      :repaired? (boolean original)
+                      :dump-path (:dump-path dumped)})
+      (web/broadcast! {:type "eval-update" :id eval-id
+                       :status (if db-timed-out? "db-timeout" status)
+                       :target target :eval-ms elapsed}))
     (let [err-summary (summarize-err (:err result) eval-id)
           parts (cond-> []
                   original

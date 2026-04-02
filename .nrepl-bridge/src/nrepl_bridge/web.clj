@@ -42,6 +42,7 @@
                 "exception"    "#f97316"
                 "class-not-found" "#e879f9"
                 "timeout"      "#f59e0b"
+                "db-timeout"   "#d97706"
                 "syntax-error" "#f97316"
                 "pending"      "#8b5cf6"
                 "evaluating"   "#3b82f6"
