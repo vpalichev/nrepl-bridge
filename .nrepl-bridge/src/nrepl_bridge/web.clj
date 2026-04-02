@@ -453,16 +453,43 @@
 ;; --- Server lifecycle ---
 
 (defonce !server (atom nil))
+(def !actual-port (atom nil))
+
+(defn- port-available? [port]
+  (try
+    (let [sock (java.net.ServerSocket. port)]
+      (.close sock)
+      true)
+    (catch Exception _ false)))
 
 (defn start!
-  "Start the dashboard HTTP server on the given port."
-  [port]
+  "Start the dashboard HTTP server. Tries preferred port, scans up to +10 if taken."
+  [preferred-port]
   (when-let [s @!server]
     (s))  ;; stop previous
-  (let [s (http/run-server route-request {:port port :legacy-return-value? false})]
-    (reset! !server s)
-    (log/log! :info (str "Dashboard started at http://localhost:" port))
-    port))
+  (let [max-attempts 10
+        port (loop [p preferred-port
+                    n 0]
+               (cond
+                 (>= n max-attempts)
+                 (do (log/log! :warn (str "Dashboard: no available port in range "
+                                          preferred-port "-" (+ preferred-port max-attempts -1)))
+                     nil)
+
+                 (port-available? p)
+                 p
+
+                 :else
+                 (do (log/log! :info (str "Dashboard port " p " is taken, trying " (inc p)))
+                     (recur (inc p) (inc n)))))]
+    (when port
+      (let [s (http/run-server route-request {:port port :legacy-return-value? false})]
+        (reset! !server s)
+        (reset! !actual-port port)
+        (when (not= port preferred-port)
+          (log/log! :info (str "Dashboard port " preferred-port " was in use, using " port " instead")))
+        (log/log! :info (str "Dashboard started at http://localhost:" port))
+        port))))
 
 (defn stop!
   "Stop the dashboard HTTP server."

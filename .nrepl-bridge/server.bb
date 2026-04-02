@@ -333,7 +333,9 @@
 
 (defn startup-report []
   (let [failed (filterv #(not (:passed? %)) @startup-checks)
-        parts  (cond-> [(str "[nrepl-bridge build " bridge-build "]")]
+        dashboard-port (or @web/!actual-port (:dashboard-port @config))
+        parts  (cond-> [(str "[nrepl-bridge build " bridge-build
+                             " | dashboard http://localhost:" dashboard-port "]")]
                  (seq failed)
                  (conj (str "WARNING: Some startup checks failed:\n"
                             (str/join "\n" (mapv #(str "  FAIL: " (:name %) " -- " (:detail %)) failed))
@@ -588,7 +590,10 @@
     (catch Exception e
       (log/log! :warn (str "Dashboard failed to start: " (.getMessage e))))))
 
-(log/log! :info (str "MCP server ready, dashboard at http://localhost:" (:dashboard-port @config)))
+;; Wait briefly for dashboard to bind so we can log the actual port
+(Thread/sleep 500)
+(log/log! :info (str "MCP server ready, dashboard at http://localhost:"
+                     (or @web/!actual-port (:dashboard-port @config))))
 
 (loop []
   (when-let [msg (try (read-message) (catch Exception e
