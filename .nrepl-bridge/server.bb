@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02k")
+(def bridge-build "2026-04-02l")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -549,6 +549,47 @@
                                :form form :original original :gated? false
                                :session-id session-id})))))
 
+(def control-tool-definition
+  {:name "bridge_control"
+   :description "Control the nrepl-bridge MCP server. Use 'status' to check health, 'shutdown' to stop the bridge (use /mcp to restart)."
+   :inputSchema
+   {:type "object"
+    :properties
+    {:action {:type "string"
+              :enum ["status" "shutdown"]
+              :description "'status' returns build, uptime, dashboard URL, missed writes. 'shutdown' stops the bridge process."}}
+    :required ["action"]}})
+
+(def ^:private start-time (System/currentTimeMillis))
+
+(defn- handle-bridge-control [params]
+  (case (:action params)
+    "status"
+    (let [uptime-sec (quot (- (System/currentTimeMillis) start-time) 1000)
+          uptime-str (cond
+                       (< uptime-sec 60)   (str uptime-sec "s")
+                       (< uptime-sec 3600) (str (quot uptime-sec 60) "m " (rem uptime-sec 60) "s")
+                       :else               (str (quot uptime-sec 3600) "h " (quot (rem uptime-sec 3600) 60) "m"))
+          dashboard  (or @web/!actual-port (:dashboard-port @config))
+          missed     @db/missed-write-count]
+      {:content [{:type "text"
+                  :text (str "build: " bridge-build
+                             "\nuptime: " uptime-str
+                             "\ndashboard: http://localhost:" dashboard
+                             "\nbackend port: " (get-backend-port)
+                             "\nmissed DB writes: " missed
+                             (when (pos? missed) (str " (see .workbench/db/missed-writes.edn)")))}]})
+
+    "shutdown"
+    (do
+      (log/log! :info "Shutdown requested via bridge_control tool")
+      (future (Thread/sleep 500) (System/exit 0))
+      {:content [{:type "text"
+                  :text "Bridge shutting down. Use /mcp to restart."}]})
+
+    {:content [{:type "text" :text (str "Unknown action: " (:action params))}]
+     :isError true}))
+
 (defn handle-request [msg]
   (let [method (:method msg)
         id     (:id msg)
@@ -565,14 +606,14 @@
 
       "tools/list"
       {:jsonrpc "2.0" :id id
-       :result {:tools [tool-definition]}}
+       :result {:tools [tool-definition control-tool-definition]}}
 
       "tools/call"
       (let [tool-name (:name params)
             arguments (:arguments params)]
-        (if (= tool-name "nrepl_send")
-          {:jsonrpc "2.0" :id id
-           :result (handle-nrepl-send arguments)}
+        (case tool-name
+          "nrepl_send"     {:jsonrpc "2.0" :id id :result (handle-nrepl-send arguments)}
+          "bridge_control" {:jsonrpc "2.0" :id id :result (handle-bridge-control arguments)}
           {:jsonrpc "2.0" :id id
            :error {:code -32601 :message (str "Unknown tool: " tool-name)}}))
 

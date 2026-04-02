@@ -72,6 +72,13 @@ Each project needs a unique dashboard port to avoid collisions. If the preferred
 
 The actual dashboard URL is always available at `.workbench/dashboard.url`.
 
+## Bridge Control
+
+Use the `bridge_control` tool to manage the MCP server:
+
+`bridge_control {action: "status"}` — returns build version, uptime, dashboard URL, backend port, missed DB writes
+`bridge_control {action: "shutdown"}` — stops the bridge process. Use `/mcp` to restart.
+
 ## How to Evaluate Clojure
 
 Use the `nrepl_send` tool. It is the only correct way to send Clojure forms to the REPL in this project.
