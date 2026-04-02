@@ -158,7 +158,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02d")
+(def bridge-build "2026-04-02e")
 
 (defn run-startup-checks! []
   (log/init!)
