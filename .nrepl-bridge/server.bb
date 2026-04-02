@@ -158,7 +158,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-01b")
+(def bridge-build "2026-04-02a")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -182,10 +182,10 @@
                  (when (:frontend-port @config) (str " frontend=" (:frontend-port @config))))))
 
   (check! "sqlite-db"
-          (fn [] (db/init-db!)))
-
-  (check! "schema-applied"
-          (fn [] "schema applied by init-db!"))
+          (fn []
+            (db/init-db!)
+            (db/resolve-orphaned-evals!)
+            "db initialized, orphans resolved"))
 
   (check! "backend-nrepl"
           (fn []

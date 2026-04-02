@@ -123,49 +123,63 @@
 (defn clone-session
   "Clone a new nREPL session. Returns the session-id string, or nil on failure."
   [port timeout-ms]
-  (try
-    (log/log! :info (str "Cloning nREPL session on port " port))
-    (with-open [sock (doto (Socket. "127.0.0.1" (int port))
-                       (.setSoTimeout (int timeout-ms)))
-                out  (BufferedOutputStream. (.getOutputStream sock))
-                in   (PushbackInputStream. (.getInputStream sock))]
-      (bencode/write-bencode out {"op" "clone"})
-      (.flush out)
-      (loop []
-        (let [resp        (bencode/read-bencode in)
-              new-session (bytes->str (get resp "new-session"))
-              status      (get resp "status")]
-          (if (status-done? status)
-            (do
-              (log/log! :info (str "Cloned session: " new-session))
-              new-session)
-            (recur)))))
-    (catch Exception e
-      (log/log! :error (str "Failed to clone session on port " port ": " (.getMessage e)))
-      nil)))
+  (let [sock (doto (Socket. "127.0.0.1" (int port))
+               (.setSoTimeout (int timeout-ms)))
+        deadline (future
+                   (Thread/sleep (long (+ timeout-ms 5000)))
+                   (log/log! :warn (str "Hard deadline on clone-session, closing socket"))
+                   (try (.close sock) (catch Exception _)))]
+    (try
+      (log/log! :info (str "Cloning nREPL session on port " port))
+      (with-open [_ sock
+                  out  (BufferedOutputStream. (.getOutputStream sock))
+                  in   (PushbackInputStream. (.getInputStream sock))]
+        (bencode/write-bencode out {"op" "clone"})
+        (.flush out)
+        (loop []
+          (let [resp        (bencode/read-bencode in)
+                new-session (bytes->str (get resp "new-session"))
+                status      (get resp "status")]
+            (if (status-done? status)
+              (do
+                (log/log! :info (str "Cloned session: " new-session))
+                new-session)
+              (recur)))))
+      (catch Exception e
+        (log/log! :error (str "Failed to clone session on port " port ": " (.getMessage e)))
+        nil)
+      (finally
+        (future-cancel deadline)))))
 
 (defn interrupt-session!
   "Send an nREPL interrupt op to cancel any running eval on a session.
    Best-effort: returns true if the interrupt was acknowledged, false on error."
   [port session timeout-ms]
-  (try
-    (log/log! :info (str "Interrupting session " session " on port " port))
-    (with-open [sock (doto (Socket. "127.0.0.1" (int port))
-                       (.setSoTimeout (int timeout-ms)))
-                out  (BufferedOutputStream. (.getOutputStream sock))
-                in   (PushbackInputStream. (.getInputStream sock))]
-      (bencode/write-bencode out {"op" "interrupt" "session" session})
-      (.flush out)
-      (loop []
-        (let [resp   (bencode/read-bencode in)
-              status (get resp "status")]
-          (if (status-done? status)
-            (do (log/log! :info (str "Interrupt acknowledged for session " session))
-                true)
-            (recur)))))
-    (catch Exception e
-      (log/log! :warn (str "Interrupt failed for session " session ": " (.getMessage e)))
-      false)))
+  (let [sock (doto (Socket. "127.0.0.1" (int port))
+               (.setSoTimeout (int timeout-ms)))
+        deadline (future
+                   (Thread/sleep (long (+ timeout-ms 5000)))
+                   (log/log! :warn (str "Hard deadline on interrupt-session!, closing socket"))
+                   (try (.close sock) (catch Exception _)))]
+    (try
+      (log/log! :info (str "Interrupting session " session " on port " port))
+      (with-open [_ sock
+                  out  (BufferedOutputStream. (.getOutputStream sock))
+                  in   (PushbackInputStream. (.getInputStream sock))]
+        (bencode/write-bencode out {"op" "interrupt" "session" session})
+        (.flush out)
+        (loop []
+          (let [resp   (bencode/read-bencode in)
+                status (get resp "status")]
+            (if (status-done? status)
+              (do (log/log! :info (str "Interrupt acknowledged for session " session))
+                  true)
+              (recur)))))
+      (catch Exception e
+        (log/log! :warn (str "Interrupt failed for session " session ": " (.getMessage e)))
+        false)
+      (finally
+        (future-cancel deadline)))))
 
 (defn session-alive?
   "Check if a session is still valid by evaluating a known form.

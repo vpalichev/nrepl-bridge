@@ -65,6 +65,19 @@ CREATE TABLE IF NOT EXISTS evals (
   (log/log! :info (str "SQLite initialized at " db-path))
   db-path)
 
+(defn resolve-orphaned-evals!
+  "Mark any 'evaluating' rows as orphaned. Called on startup to clean up
+   rows left behind by a previous server crash or restart."
+  []
+  (let [ts (now-utc)
+        rows (sqlite/query db-path
+                           ["SELECT id FROM evals WHERE status = 'evaluating'"])]
+    (when (seq rows)
+      (sqlite/execute! db-path
+                       ["UPDATE evals SET status = 'error', err = 'Orphaned by server restart', resolved_at = ? WHERE status = 'evaluating'"
+                        ts])
+      (log/log! :info (str "Resolved " (count rows) " orphaned evaluating rows")))))
+
 (defn insert-eval!
   "Insert a new eval row with status 'evaluating'. Returns the row id."
   [{:keys [target port ns form form-original session-id]}]
