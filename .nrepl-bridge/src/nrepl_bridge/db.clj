@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS evals (
 
 (def ^:private migrations
   ["ALTER TABLE evals ADD COLUMN decision TEXT DEFAULT 'auto' CHECK (decision IN ('auto', 'pending', 'approved', 'rejected'))"
-   "ALTER TABLE evals ADD COLUMN feedback TEXT"])
+   "ALTER TABLE evals ADD COLUMN feedback TEXT"
+   "ALTER TABLE evals ADD COLUMN intent TEXT"])
 
 (defn- apply-migrations!
   "Apply schema migrations. Each is idempotent (catches 'duplicate column' errors)."
@@ -80,12 +81,12 @@ CREATE TABLE IF NOT EXISTS evals (
 
 (defn insert-eval!
   "Insert a new eval row with status 'evaluating'. Returns the row id."
-  [{:keys [target port ns form form-original session-id]}]
+  [{:keys [target port ns form form-original session-id intent]}]
   (let [ts (now-utc)
         rows (sqlite/query db-path
-                           ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'evaluating', ?) RETURNING id"
-                            ts target port ns form form-original session-id])]
+                           ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
+       VALUES (?, ?, ?, ?, ?, ?, 'evaluating', ?, ?) RETURNING id"
+                            ts target port ns form form-original session-id intent])]
     (:id (first rows))))
 
 (defn update-eval!

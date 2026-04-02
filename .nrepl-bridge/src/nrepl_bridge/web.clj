@@ -99,7 +99,12 @@
     (decision-badge (:decision row))]
    [:td {:style "padding:8px;color:#aaa"} (:target row)]
    [:td {:style "padding:8px;color:#aaa"} (or (:ns row) "user")]
-   [:td {:style "padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+   [:td {:class "col-intent"
+         :style "padding:8px;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7dd3fc"
+         :title (or (:intent row) "")}
+    (or (:intent row) "")]
+   [:td {:class "col-form"
+         :style "padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
          :title (:form row)}
     (truncate (:form row) 80)]
    (let [evaluating? (= "evaluating" (:status row))]
@@ -174,6 +179,11 @@
         tr .copy-btn { opacity: 0; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); cursor: pointer; background: #333; border: 1px solid #555; color: #aaa; border-radius: 4px; padding: 2px 6px; font-size: 11px; transition: opacity 0.15s; z-index: 1; }
         tr:hover .copy-btn { opacity: 1; }
         tr .copy-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+        .col-form { }
+        .col-intent { display: none; }
+        .view-toggles { margin-bottom: 12px; display: flex; gap: 16px; }
+        .view-toggles label { color: #888; font-size: 13px; cursor: pointer; }
+        .view-toggles input { margin-right: 4px; }
         .log-section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-top: 24px; }
         .log-section pre { color: #aaa; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
       ")]]
@@ -206,12 +216,18 @@
         [:a {:href "/?status=timeout" :class (when (= status-filter "timeout") "active")} "Timeouts"]
         [:a {:href "/?status=syntax-error" :class (when (= status-filter "syntax-error") "active")} "Syntax"]]
 
+       ;; View toggles
+       [:div.view-toggles
+        [:label [:input {:type "checkbox" :id "toggle-intent" :onchange "toggleCol('col-intent', this.checked)"}] "Show intent"]
+        [:label [:input {:type "checkbox" :id "toggle-form" :checked "checked" :onchange "toggleCol('col-form', this.checked)"}] "Show commands"]]
+
        ;; Eval table
        [:table
         [:thead
          [:tr
           [:th "ID"] [:th "Status"] [:th "Target"] [:th "NS"]
-          [:th "Form"] [:th "Value"] [:th "Duration"] [:th "Time"] [:th "Gap"]]]
+          [:th {:class "col-intent"} "Intent"] [:th {:class "col-form"} "Form"]
+          [:th "Value"] [:th "Duration"] [:th "Time"] [:th "Gap"]]]
         [:tbody {:id "eval-tbody"}
          (let [pairs (map vector evals (concat (rest evals) [nil]))]
            (for [[row prev] pairs]
@@ -229,6 +245,13 @@
        ;; JavaScript
        [:script (hu/raw-string "
         // Copy eval row to clipboard
+        // Toggle column visibility
+        function toggleCol(cls, show) {
+          document.querySelectorAll('.' + cls).forEach(function(el) {
+            el.style.display = show ? '' : 'none';
+          });
+        }
+
         function copyRow(tr) {
           var id = tr.getAttribute('data-eval-id');
           var status = tr.getAttribute('data-status');

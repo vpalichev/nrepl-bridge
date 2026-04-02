@@ -158,7 +158,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02e")
+(def bridge-build "2026-04-02f")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -305,7 +305,9 @@
           :description "The namespace to evaluate in."}
      :timeout_ms {:type "integer"
                   :default 30000
-                  :description "Eval timeout in milliseconds. Increase for known long-running operations."}}
+                  :description "Eval timeout in milliseconds. Increase for known long-running operations."}
+     :intent {:type "string"
+              :description "Brief description of what this eval is trying to achieve (e.g. 'check if modal is visible'). Shown on the dashboard."}}
     :required ["form"]}})
 
 (defn startup-report []
@@ -444,6 +446,7 @@
         target     (or (:target params) "backend")
         eval-ns    (or (:ns params) "user")
         timeout-ms (or (:timeout_ms params) 30000)
+        intent     (:intent params)
         port       (if (= target "frontend")
                      (or (:frontend-port @config) (get-backend-port))
                      (get-backend-port))
@@ -462,7 +465,8 @@
       (let [eval-id (db/insert-eval! {:target target :port port :ns eval-ns
                                       :form (or form raw-form)
                                       :form-original original
-                                      :session-id session-id})]
+                                      :session-id session-id
+                                      :intent intent})]
         (db/update-eval! {:id eval-id :status "syntax-error" :err error :eval-ms 0})
         (log/log-eval! {:id eval-id :target target :port port :ns eval-ns
                         :form-length (count raw-form) :form-preview raw-form
@@ -512,7 +516,8 @@
       :else
       (let [eval-id (db/insert-eval! {:target target :port actual-port :ns eval-ns
                                       :form form :form-original original
-                                      :session-id session-id})]
+                                      :session-id session-id
+                                      :intent intent})]
         (web/broadcast! {:type "eval-update" :id eval-id :status "evaluating"
                          :target target})
         (execute-and-respond! {:eval-id eval-id :actual-port actual-port
