@@ -52,6 +52,26 @@ No hardcoded ports. Start nREPL, the bridge finds it.
 
 To override (e.g., remote nREPL), add `"--backend-port", "7888"` to the args in `.mcp.json`.
 
+## Dashboard
+
+The bridge runs an eval history dashboard at `http://localhost:9500` by default. To change the port (e.g., when running multiple projects simultaneously), add `"--dashboard-port", "9501"` to the args in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "nrepl-bridge": {
+      "type": "stdio",
+      "command": "bb",
+      "args": [".nrepl-bridge/server.bb", "--dashboard-port", "9501"]
+    }
+  }
+}
+```
+
+Each project needs a unique dashboard port to avoid collisions. If the preferred port is taken, the bridge auto-scans upward (9501, 9502, ...).
+
+The actual dashboard URL is always available at `.workbench/dashboard.url`.
+
 ## How to Evaluate Clojure
 
 Use the `nrepl_send` tool. It is the only correct way to send Clojure forms to the REPL in this project.
