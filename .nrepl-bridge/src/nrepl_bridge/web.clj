@@ -71,7 +71,22 @@
         (str/replace "<" "&lt;")
         (str/replace ">" "&gt;"))))
 
-(defn- eval-row-html [row]
+(defn- parse-ts
+  "Parse an ISO-8601 timestamp to epoch millis. Returns nil on failure."
+  [ts]
+  (try (when ts (.toEpochMilli (java.time.Instant/parse ts)))
+       (catch Exception _ nil)))
+
+(defn- format-gap
+  "Format a gap in seconds as a human-readable string."
+  [gap-sec]
+  (when gap-sec
+    (cond
+      (< gap-sec 60)   (str gap-sec "s")
+      (< gap-sec 3600) (str (quot gap-sec 60) "m" (let [s (rem gap-sec 60)] (when (pos? s) (str s "s"))))
+      :else            (str (quot gap-sec 3600) "h" (let [m (rem (quot gap-sec 60) 60)] (when (pos? m) (str m "m")))))))
+
+(defn- eval-row-html [row gap-sec]
   [:tr {:id (str "eval-" (:id row))
         :style "border-bottom:1px solid #333"
         :data-form (escape-attr (:form row))
@@ -100,7 +115,11 @@
    [:td {:style "padding:8px;color:#666;font-size:12px"}
     (when (:created_at row)
       (let [ts (:created_at row)]
-        (if (> (count ts) 19) (subs ts 11 19) ts)))]])
+        (if (> (count ts) 19) (subs ts 11 19) ts)))]
+   [:td {:style "padding:8px;color:#555;font-size:11px;text-align:right"}
+    (when gap-sec
+      [:span {:style (str "color:" (cond (< gap-sec 5) "#4ade80" (< gap-sec 30) "#888" :else "#ef4444"))}
+       (str "+" (format-gap gap-sec))])]])
 
 (defn- pending-section [pending-rows]
   (when (seq pending-rows)
@@ -192,9 +211,15 @@
         [:thead
          [:tr
           [:th "ID"] [:th "Status"] [:th "Target"] [:th "NS"]
-          [:th "Form"] [:th "Value"] [:th "Duration"] [:th "Time"]]]
+          [:th "Form"] [:th "Value"] [:th "Duration"] [:th "Time"] [:th "Gap"]]]
         [:tbody {:id "eval-tbody"}
-         (for [row evals] (eval-row-html row))]]
+         (let [pairs (map vector evals (concat (rest evals) [nil]))]
+           (for [[row prev] pairs]
+             (let [gap-sec (when (and (:created_at row) (:created_at prev))
+                             (let [t1 (parse-ts (:created_at row))
+                                   t0 (parse-ts (:created_at prev))]
+                               (when (and t1 t0) (quot (- t1 t0) 1000))))]
+               (eval-row-html row gap-sec))))]]
 
        ;; Log viewer
        [:div.log-section
