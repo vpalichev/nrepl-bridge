@@ -363,6 +363,12 @@
         result  (nrepl/nrepl-eval {:port actual-port :code actual-form
                                    :ns eval-ns :timeout-ms timeout-ms
                                    :session session-id :id msg-id})
+        _       (log/log! :info (str "EVAL-RAW #" eval-id
+                                     " status=" (:status result)
+                                     " value?" (boolean (:value result))
+                                     " err?" (boolean (:err result))
+                                     " out?" (boolean (:out result))
+                                     " ex=" (:ex result)))
         ;; On connection error or value-swallowing corruption, re-clone and retry once
         [result session-id actual-port]
         (let [conn-error? (and (= "error" (:status result))
@@ -379,12 +385,19 @@
                                      " returned empty result, re-cloning")))
               (when conn-error?
                 (invalidate-backend-port!))
+              (log/log! :info (str "Retry: cloning new session for " target))
               (let [retry-port (get-backend-port)
                     new-sid    (clone-target-session! target)
+                    _          (log/log! :info (str "Retry: new session " new-sid ", sending eval"))
                     new-mid    (next-msg-id)
                     retry      (nrepl/nrepl-eval {:port retry-port :code actual-form
                                                   :ns eval-ns :timeout-ms timeout-ms
                                                   :session new-sid :id new-mid})]
+                (log/log! :info (str "Retry EVAL-RAW #" eval-id
+                                     " status=" (:status retry)
+                                     " value?" (boolean (:value retry))
+                                     " err?" (boolean (:err retry))
+                                     " ex=" (:ex retry)))
                 [retry new-sid retry-port]))
             [result session-id actual-port]))
         elapsed (- (System/currentTimeMillis) t0)
