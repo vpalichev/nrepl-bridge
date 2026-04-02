@@ -301,6 +301,68 @@
           }).then(() => location.reload());
         }
 
+        // --- Helpers for inline DOM updates ---
+        var statusColors = {ok:'#22c55e',error:'#ef4444',exception:'#f97316','class-not-found':'#e879f9',timeout:'#f59e0b','db-timeout':'#d97706','syntax-error':'#f97316',pending:'#8b5cf6',evaluating:'#3b82f6'};
+        function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/\"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        function statusBadgeHtml(st) {
+          return '<span style=\"background:' + (statusColors[st]||'#6b7280') + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:bold\">' + escHtml(st) + '</span>';
+        }
+        function isIntentVisible() {
+          var cb = document.getElementById('toggle-intent');
+          return cb && cb.checked;
+        }
+
+        function prependEvalRow(data) {
+          var tbody = document.getElementById('eval-tbody');
+          if (!tbody) return;
+          var tr = document.createElement('tr');
+          tr.id = 'eval-' + data.id;
+          tr.style = 'border-bottom:1px solid #333';
+          tr.setAttribute('data-form', data.form || '');
+          tr.setAttribute('data-result', '');
+          tr.setAttribute('data-status', data.status);
+          tr.setAttribute('data-eval-id', data.id);
+          var now = new Date().toISOString();
+          var time = now.substring(11, 19);
+          tr.innerHTML =
+            '<td style=\"padding:8px;color:#888\">#' + data.id + '<button class=\"copy-btn\" onclick=\"copyRow(this.closest(\\'tr\\'))\">copy</button></td>' +
+            '<td style=\"padding:8px\">' + statusBadgeHtml('evaluating') + '</td>' +
+            '<td style=\"padding:8px;color:#aaa\">' + escHtml(data.target || '') + '</td>' +
+            '<td style=\"padding:8px;color:#aaa\">' + escHtml(data.ns || 'user') + '</td>' +
+            '<td class=\"col-intent\" style=\"padding:8px;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7dd3fc;display:' + (isIntentVisible() ? '' : 'none') + '\" title=\"\"></td>' +
+            '<td class=\"col-form\" style=\"padding:8px;font-family:monospace;font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\" title=\"' + escAttr(data.form || '') + '\">' + escHtml(data.form || '') + '</td>' +
+            '<td class=\"elapsed\" data-started=\"' + now + '\" style=\"padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3b82f6\"></td>' +
+            '<td style=\"padding:8px;color:#aaa;text-align:right\"></td>' +
+            '<td style=\"padding:8px;color:#666;font-size:12px\">' + time + '</td>' +
+            '<td style=\"padding:8px;color:#555;font-size:11px;text-align:right\"></td>';
+          tbody.insertBefore(tr, tbody.firstChild);
+        }
+
+        function updateEvalRow(tr, data) {
+          tr.setAttribute('data-status', data.status);
+          tr.setAttribute('data-result', data.value || data.err || '');
+          // Status badge (2nd cell)
+          tr.children[1].innerHTML = statusBadgeHtml(data.status);
+          // Value cell (7th cell, index 6)
+          var vc = tr.children[6];
+          var isErr = !data.value && (data.err || data.ex);
+          vc.className = '';
+          vc.removeAttribute('data-started');
+          vc.style.cssText = 'padding:8px;font-family:monospace;font-size:13px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (isErr ? '#f87171' : '#8f8');
+          vc.textContent = data.value || data.err || '';
+          vc.title = data.value || data.err || '';
+          // Duration (8th cell, index 7)
+          tr.children[7].textContent = data.eval_ms != null ? data.eval_ms + 'ms' : '';
+        }
+
+        // Delayed full refresh for stats/gaps (coalesced)
+        var refreshTimer = null;
+        function scheduleRefresh() {
+          if (refreshTimer) clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(function() { location.reload(); }, 8000);
+        }
+
         // WebSocket for live updates
         var ws;
         function connectWs() {
@@ -309,7 +371,16 @@
           ws.onmessage = function(e) {
             var data = JSON.parse(e.data);
             if (data.type === 'eval-update') {
-              // Reload page for simplicity -- could be smarter
+              var row = document.getElementById('eval-' + data.id);
+              if (data.status === 'evaluating' && !row) {
+                prependEvalRow(data);
+              } else if (row && data.status !== 'evaluating') {
+                updateEvalRow(row, data);
+              } else if (!row) {
+                location.reload();
+              }
+              scheduleRefresh();
+            } else if (data.type === 'approval-request') {
               location.reload();
             }
           };

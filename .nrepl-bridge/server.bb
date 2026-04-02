@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02m")
+(def bridge-build "2026-04-02n")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -360,6 +360,14 @@
         (str (subs cleaned 0 err-limit) "\n... [full error in dashboard #" eval-id "]")
         cleaned))))
 
+(defn- ws-truncate
+  "Truncate a string for WebSocket broadcast payloads."
+  [s n]
+  (when s
+    (if (> (count s) n)
+      (str (subs s 0 n) "...")
+      s)))
+
 (def ^:private dump-threshold 32768)
 
 (defn- dump-large-result!
@@ -431,6 +439,12 @@
         dumped  (dump-large-result! eval-id (:value result))
         _       (log/log! :info (str "STEP3-PRE-DB #" eval-id))
         status  (:status result)]
+    ;; Broadcast BEFORE DB write so dashboard updates instantly
+    (web/broadcast! {:type "eval-update" :id eval-id
+                     :status status :target target :eval-ms elapsed
+                     :value (ws-truncate (:value dumped) 60)
+                     :err   (ws-truncate (:err result) 60)
+                     :ex    (:ex result)})
     (let [db-result (db/update-eval! {:id eval-id :status status
                                       :value (:value dumped) :out (:out result)
                                       :err (:err result) :ex (:ex result)
@@ -442,9 +456,9 @@
                       :status status :eval-ms elapsed
                       :repaired? (boolean original)
                       :dump-path (:dump-path dumped)})
-      (web/broadcast! {:type "eval-update" :id eval-id
-                       :status (if db-timed-out? "db-timeout" status)
-                       :target target :eval-ms elapsed}))
+      (when db-timed-out?
+        (web/broadcast! {:type "eval-update" :id eval-id :status "db-timeout"
+                         :target target :eval-ms elapsed})))
     (let [err-summary (summarize-err (:err result) eval-id)
           parts (cond-> []
                   original
@@ -544,7 +558,9 @@
                                       :session-id session-id
                                       :intent intent})]
         (web/broadcast! {:type "eval-update" :id eval-id :status "evaluating"
-                         :target target})
+                         :target target
+                         :form (ws-truncate form 80)
+                         :ns eval-ns})
         (execute-and-respond! {:eval-id eval-id :actual-port actual-port
                                :actual-form actual-form :eval-ns eval-ns
                                :timeout-ms timeout-ms :target target
