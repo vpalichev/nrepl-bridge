@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-02j")
+(def bridge-build "2026-04-02k")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -592,8 +592,9 @@
 
 ;; Wait briefly for dashboard to bind so we can log the actual port
 (Thread/sleep 500)
-(log/log! :info (str "MCP server ready, dashboard at http://localhost:"
-                     (or @web/!actual-port (:dashboard-port @config))))
+(let [url (str "http://localhost:" (or @web/!actual-port (:dashboard-port @config)))]
+  (spit ".workbench/dashboard.url" url)
+  (log/log! :info (str "MCP server ready, dashboard at " url)))
 
 (loop []
   (when-let [msg (try (read-message) (catch Exception e
