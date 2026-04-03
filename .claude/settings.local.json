@@ -1,5 +1,10 @@
 {
   "enabledMcpjsonServers": [
     "nrepl-bridge"
-  ]
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(clj|cljs|js|html\\)$\")"
+    ]
+  }
 }
