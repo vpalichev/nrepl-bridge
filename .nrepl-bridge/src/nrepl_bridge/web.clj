@@ -204,31 +204,35 @@
              [:div {:style "color:#fbbf24;font-weight:bold"} (str missed " missed DB write" (when (> missed 1) "s") " — pod timeout")]
              [:div {:style "color:#d97706;font-size:12px"} (str "Records saved to .workbench/db/missed-writes.edn — review and re-import if needed")]]]))
 
-       ;; DB write health bar
+       ;; DB write health bar (always visible, fixed height)
        (let [history @db/write-history
              qdepth  @db/write-queue-depth
              ok-n    (count (filter #(= :ok (:outcome %)) history))
              fail-n  (count (filter #(= :failed (:outcome %)) history))
-             total-n (count history)]
-         (when (or (pos? total-n) (pos? qdepth))
-           [:div {:style "margin-bottom:12px"}
-            [:div {:style "display:flex;align-items:center;gap:10px;margin-bottom:4px"}
-             [:span {:style "color:#888;font-size:12px"} "DB writes"]
-             (when (pos? qdepth)
-               [:span {:style "color:#a5b4fc;font-size:12px"} (str qdepth " queued")])
-             (when (pos? total-n)
-               [:span {:style "color:#666;font-size:11px"}
-                (str ok-n "/" total-n " ok"
-                     (when (pos? fail-n) (str ", " fail-n " failed")))])]
-            [:div {:style "display:flex;gap:2px;align-items:center"
-                   :title "Last 50 DB writes: green=ok, red=failed, blue=queued"}
-             (for [{:keys [id outcome ms]} history]
-               [:div {:style (str "width:8px;height:16px;border-radius:2px;background:"
-                                  (case outcome :ok "#22c55e" :failed "#ef4444" "#6b7280"))
-                      :title (str "#" id " " (name outcome) " " ms "ms")}])
-             (for [_ (range qdepth)]
-               [:div {:style "width:8px;height:16px;border-radius:2px;background:#6366f1"
-                      :title "queued"}])]]))
+             total-n (count history)
+             max-blocks 50
+             shown-q (min qdepth (- max-blocks total-n))
+             empty-n (max 0 (- max-blocks total-n shown-q))]
+         [:div {:style "margin-bottom:12px;height:36px"}
+          [:div {:style "display:flex;align-items:center;gap:10px;margin-bottom:4px;height:14px"}
+           [:span {:style "color:#888;font-size:12px"} "DB writes"]
+           (when (pos? qdepth)
+             [:span {:style "color:#a5b4fc;font-size:12px"} (str qdepth " queued")])
+           (when (pos? total-n)
+             [:span {:style "color:#666;font-size:11px"}
+              (str ok-n "/" total-n " ok"
+                   (when (pos? fail-n) (str ", " fail-n " failed")))])]
+          [:div {:style "display:flex;gap:2px;align-items:center;height:16px;overflow:hidden;max-width:500px"
+                 :title "Last 50 DB writes: green=ok, red=failed, blue=queued"}
+           (for [{:keys [id outcome ms]} history]
+             [:div {:style (str "width:8px;min-width:8px;height:16px;border-radius:2px;background:"
+                                (case outcome :ok "#22c55e" :failed "#ef4444" "#6b7280"))
+                    :title (str "#" id " " (name outcome) " " ms "ms")}])
+           (for [_ (range shown-q)]
+             [:div {:style "width:8px;min-width:8px;height:16px;border-radius:2px;background:#6366f1"
+                    :title "queued"}])
+           (for [_ (range empty-n)]
+             [:div {:style "width:8px;min-width:8px;height:16px;border-radius:2px;background:#1a1a2e"}])]])
 
        ;; Pending approvals (prominent, at top)
        (pending-section pending)
