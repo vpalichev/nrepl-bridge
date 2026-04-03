@@ -179,9 +179,54 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-03h")
+(def bridge-build "2026-04-03i")
+
+(defn- kill-previous-bridges!
+  "Find and kill any previous bb.exe processes running server.bb (excluding ourselves)."
+  []
+  (try
+    (let [my-pid (.pid (java.lang.ProcessHandle/current))
+          cwd-raw (System/getProperty "user.dir")
+          cwd     (str/replace cwd-raw "\\" "\\\\")
+          ps-cmd  (str "Get-WmiObject Win32_Process | Where-Object { $_.Name -eq 'bb.exe' -and $_.CommandLine -like '*" cwd "*server.bb*' -and $_.ProcessId -ne " my-pid " } | Select-Object -ExpandProperty ProcessId")]
+      (binding [*err* *err*]
+        (println (str "[kill-bridge] My PID: " my-pid))
+        (println (str "[kill-bridge] Project: " cwd-raw))
+        (println (str "[kill-bridge] Searching for zombies..."))
+        (let [result (-> (ProcessBuilder. ["powershell" "-Command" ps-cmd])
+                         (.redirectErrorStream true)
+                         (.start))
+              output (slurp (.getInputStream result))
+              exit   (.waitFor result)]
+          (println (str "[kill-bridge] PowerShell exit: " exit))
+          (when-not (str/blank? output)
+            (println (str "[kill-bridge] PowerShell output: " (str/trim output))))
+          (if (not= 0 exit)
+            (println "[kill-bridge] PowerShell query failed — skipping zombie check")
+            (let [pids (->> (str/split-lines output)
+                            (map str/trim)
+                            (remove empty?)
+                            (keep #(try (Long/parseLong %) (catch Exception _ nil))))]
+              (if (empty? pids)
+                (println "[kill-bridge] No zombies found — clean start")
+                (do
+                  (println (str "[kill-bridge] Found " (count pids) " zombie(s): " (str/join ", " pids)))
+                  (doseq [pid pids]
+                    (try
+                      (let [kr (-> (ProcessBuilder. ["taskkill" "/F" "/PID" (str pid)])
+                                   (.redirectErrorStream true)
+                                   (.start))
+                            ko (str/trim (slurp (.getInputStream kr)))]
+                        (.waitFor kr)
+                        (println (str "[kill-bridge] Kill PID " pid ": " ko)))
+                      (catch Exception e
+                        (println (str "[kill-bridge] Kill PID " pid " FAILED: " (.getMessage e))))))
+                  (println (str "[kill-bridge] Cleaned up " (count pids) " process(es)")))))))))
+    (catch Exception e
+      (println (str "[kill-bridge] Zombie check error: " (.getMessage e) " — proceeding anyway")))))
 
 (defn run-startup-checks! []
+  (kill-previous-bridges!)
   (log/init!)
   (reset! web/!build bridge-build)
   (log/log! :info (str "=== nrepl-bridge starting === build " bridge-build))
