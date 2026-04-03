@@ -130,9 +130,19 @@ CREATE TABLE IF NOT EXISTS evals (
                (subvec v (- (count v) write-history-size))
                v)))))
 
+(def ^:private write-audit-path ".workbench/db/write-audit.edn")
+
+(defn- audit-write!
+  "Append a detailed write attempt record to the audit log."
+  [entry]
+  (try
+    (spit write-audit-path (str (pr-str entry) "\n") :append true)
+    (catch Exception _ nil)))
+
 (defn- do-queued-write!
   "Agent action: persist one eval update. Never throws (would halt the agent)."
-  [agent-state {:keys [id status value out err ex eval-ms dump-path] :as params}]
+  [agent-state {:keys [id status value out err ex eval-ms dump-path
+                       form target ns] :as params}]
   (let [t0 (System/currentTimeMillis)]
     (try
       (let [ts (now-utc)]
@@ -142,11 +152,20 @@ CREATE TABLE IF NOT EXISTS evals (
                       ts status value out err ex eval-ms dump-path id]))
       (let [wms (- (System/currentTimeMillis) t0)]
         (log/log! :info (str "Queued write #" id " persisted (" wms "ms)"))
-        (record-write-outcome! id :ok wms))
+        (record-write-outcome! id :ok wms)
+        (audit-write! {:id id :outcome :ok :write-ms wms :ts (now-utc)
+                       :target target :ns ns :eval-status status :eval-ms eval-ms
+                       :form (when form (subs form 0 (min 120 (count form))))
+                       :value-len (count value) :err-len (count err) :ex ex}))
       (catch Exception e
         (let [wms (- (System/currentTimeMillis) t0)]
           (log/log! :error (str "Queued write #" id " failed (" wms "ms): " (.getMessage e)))
           (record-write-outcome! id :failed wms)
+          (audit-write! {:id id :outcome :failed :write-ms wms :ts (now-utc)
+                         :target target :ns ns :eval-status status :eval-ms eval-ms
+                         :form (when form (subs form 0 (min 120 (count form))))
+                         :value-len (count value) :err-len (count err) :ex ex
+                         :error (.getMessage e)})
           (dump-to-fallback! (str "queued-update #" id) params)))
       (finally
         (swap! write-queue-depth dec))))

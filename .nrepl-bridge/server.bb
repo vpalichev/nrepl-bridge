@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-03e")
+(def bridge-build "2026-04-03f")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -449,7 +449,8 @@
     (db/update-eval! {:id eval-id :status status
                       :value (:value dumped) :out (:out result)
                       :err (:err result) :ex (:ex result)
-                      :eval-ms elapsed :dump-path (:dump-path dumped)})
+                      :eval-ms elapsed :dump-path (:dump-path dumped)
+                      :form form :target target :ns eval-ns})
     (log/log! :info (str "STEP4-QUEUED #" eval-id))
     (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
                     :form-length (count form) :form-preview form

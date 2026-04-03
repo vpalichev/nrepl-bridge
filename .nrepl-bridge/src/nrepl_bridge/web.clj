@@ -386,11 +386,27 @@
           tr.children[7].textContent = data.eval_ms != null ? data.eval_ms + 'ms' : '';
         }
 
-        // Delayed full refresh for stats/gaps (coalesced)
+        // Delayed stats refresh (does NOT reload page — preserves WS-updated rows)
         var refreshTimer = null;
         function scheduleRefresh() {
           if (refreshTimer) clearTimeout(refreshTimer);
-          refreshTimer = setTimeout(function() { location.reload(); }, 8000);
+          refreshTimer = setTimeout(function() {
+            fetch('/api/stats').then(function(r) { return r.json(); }).then(function(d) {
+              var cards = document.querySelectorAll('.stat-card .stat-value');
+              if (cards.length >= 8 && d.stats) {
+                cards[0].textContent = '' + (d.stats.total || 0);
+                cards[1].textContent = '' + (d.stats.ok || 0);
+                cards[2].textContent = '' + (d.stats.errors || 0);
+                cards[3].textContent = '' + (d.stats.timeouts || 0);
+                cards[4].textContent = '' + (d.stats.syntax_errors || 0);
+                if (d.duration) {
+                  cards[5].textContent = (d.duration.avg || 0) + 'ms';
+                  cards[6].textContent = (d.duration.p50 || 0) + 'ms';
+                  cards[7].textContent = (d.duration.p95 || 0) + 'ms';
+                }
+              }
+            }).catch(function() {});
+          }, 8000);
         }
 
         // WebSocket for live updates
