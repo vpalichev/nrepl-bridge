@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-03a")
+(def bridge-build "2026-04-03c")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -445,20 +445,17 @@
                      :value (ws-truncate (:value dumped) 60)
                      :err   (ws-truncate (:err result) 60)
                      :ex    (:ex result)})
-    (let [db-result (db/update-eval! {:id eval-id :status status
-                                      :value (:value dumped) :out (:out result)
-                                      :err (:err result) :ex (:ex result)
-                                      :eval-ms elapsed :dump-path (:dump-path dumped)})
-          db-timed-out? (and (map? db-result) (:db-timeout db-result))]
-      (log/log! :info (str "STEP4-POST-DB #" eval-id (when db-timed-out? " [DB TIMEOUT]")))
-      (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
-                      :form-length (count form) :form-preview form
-                      :status status :eval-ms elapsed
-                      :repaired? (boolean original)
-                      :dump-path (:dump-path dumped)})
-      (when db-timed-out?
-        (web/broadcast! {:type "eval-update" :id eval-id :status "db-timeout"
-                         :target target :eval-ms elapsed})))
+    ;; Fire-and-forget: agent will persist asynchronously
+    (db/update-eval! {:id eval-id :status status
+                      :value (:value dumped) :out (:out result)
+                      :err (:err result) :ex (:ex result)
+                      :eval-ms elapsed :dump-path (:dump-path dumped)})
+    (log/log! :info (str "STEP4-QUEUED #" eval-id))
+    (log/log-eval! {:id eval-id :target target :port actual-port :ns eval-ns
+                    :form-length (count form) :form-preview form
+                    :status status :eval-ms elapsed
+                    :repaired? (boolean original)
+                    :dump-path (:dump-path dumped)})
     (let [err-summary (summarize-err (:err result) eval-id)
           parts (cond-> []
                   original

@@ -118,7 +118,9 @@
       (if evaluating? "" (truncate (or (:value row) (:err row)) 60))])
    [:td {:style "padding:8px;color:#aaa;text-align:right"}
     (when (:eval_ms row) (str (:eval_ms row) "ms"))]
-   [:td {:style "padding:8px;color:#666;font-size:12px"}
+   [:td {:style "padding:8px;color:#666;font-size:12px"
+         :title (or (:created_at row) "")
+         :data-full-time (or (:created_at row) "")}
     (when (:created_at row)
       (let [ts (:created_at row)]
         (if (> (count ts) 19) (subs ts 11 19) ts)))]
@@ -202,6 +204,12 @@
              [:div {:style "color:#fbbf24;font-weight:bold"} (str missed " missed DB write" (when (> missed 1) "s") " — pod timeout")]
              [:div {:style "color:#d97706;font-size:12px"} (str "Records saved to .workbench/db/missed-writes.edn — review and re-import if needed")]]]))
 
+       ;; Write queue indicator
+       (let [qdepth @db/write-queue-depth]
+         (when (pos? qdepth)
+           [:div {:style "background:#1e1b4b;border:1px solid #6366f1;border-radius:6px;padding:8px 14px;margin-bottom:12px;color:#a5b4fc;font-size:13px"}
+            (str qdepth " write" (when (> qdepth 1) "s") " queued")]))
+
        ;; Pending approvals (prominent, at top)
        (pending-section pending)
 
@@ -237,7 +245,7 @@
          [:tr
           [:th "ID"] [:th "Status"] [:th "Target"] [:th "NS"]
           [:th {:class "col-intent"} "Intent"] [:th {:class "col-form"} "Form"]
-          [:th "Value"] [:th "Duration"] [:th "Time"] [:th "Gap"]]]
+          [:th "Value"] [:th "Duration"] [:th "Time (UTC)"] [:th "Gap"]]]
         [:tbody {:id "eval-tbody"}
          (let [pairs (map vector evals (concat (rest evals) [nil]))]
            (for [[row prev] pairs]
@@ -268,9 +276,11 @@
           var form = tr.getAttribute('data-form') || '';
           var result = tr.getAttribute('data-result') || '';
           var elapsed = tr.querySelector('.elapsed');
-          var ms = tr.querySelector('td:nth-child(7)');
+          var ms = tr.querySelector('td:nth-child(8)');
           var timing = elapsed ? elapsed.textContent : (ms ? ms.textContent : '');
-          var text = '#' + id + ' [' + status + ']' + (timing ? ' ' + timing : '') + '\\n> ' + form;
+          var timeTd = tr.querySelector('td[data-full-time]');
+          var time = timeTd ? timeTd.getAttribute('data-full-time') : '';
+          var text = '#' + id + ' [' + status + ']' + (time ? ' ' + time : '') + (timing ? ' ' + timing : '') + '\\n> ' + form;
           if (result) text += '\\n' + result;
           navigator.clipboard.writeText(text).then(function() {
             var btn = tr.querySelector('.copy-btn');

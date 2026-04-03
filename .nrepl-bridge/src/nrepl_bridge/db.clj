@@ -1,6 +1,7 @@
 (ns nrepl-bridge.db
   "SQLite operations via pod-babashka-go-sqlite3.
-   All timestamps generated in Babashka via Instant/now (not SQLite DEFAULT)."
+   All timestamps generated in Babashka via Instant/now (not SQLite DEFAULT).
+   Writes go through an async queue so the MCP response is never blocked."
   (:require [pod.babashka.go-sqlite3 :as sqlite]
             [nrepl-bridge.logging :as log])
   (:import [java.time Instant]))
@@ -92,7 +93,8 @@ CREATE TABLE IF NOT EXISTS evals (
                     ts])
       (log/log! :info (str "Resolved " (count rows) " orphaned evaluating rows")))))
 
-(def ^:private db-write-timeout-ms 3000)
+;; --- Fallback for failed writes ---
+
 (def ^:private fallback-path ".workbench/db/missed-writes.edn")
 (def missed-write-count (atom 0))
 
@@ -109,55 +111,80 @@ CREATE TABLE IF NOT EXISTS evals (
     (catch Exception e
       (log/log! :error (str "Failed to write fallback file: " (.getMessage e))))))
 
-(defn- with-db-timeout
-  "Execute f with a hard deadline. On timeout, dumps data to fallback file.
-   Returns f's result on success, or {:db-timeout true} if the pod hangs."
-  [label f fallback-data]
-  (let [sentinel (Object.)
-        fut (future (try (f) (catch Exception e {:db-error (.getMessage e)})))
-        result (deref fut db-write-timeout-ms sentinel)]
-    (if (identical? result sentinel)
-      (do
-        (log/log! :error (str "DB WRITE TIMEOUT (" db-write-timeout-ms "ms) on " label
-                              " — go-sqlite3 pod is stuck. MCP response will proceed without persistence."))
-        (future-cancel fut)
-        (dump-to-fallback! label fallback-data)
-        {:db-timeout true})
-      (if (and (map? result) (:db-error result))
-        (do (log/log! :error (str "DB WRITE ERROR on " label ": " (:db-error result)))
-            (dump-to-fallback! label fallback-data)
-            result)
-        result))))
+;; --- Async write queue via Clojure agent ---
+;; update-eval! sends to the agent and returns immediately.
+;; The agent processes writes sequentially on its own thread (send-off).
+
+(def write-queue-depth (atom 0))
+
+(defn- do-queued-write!
+  "Agent action: persist one eval update. Never throws (would halt the agent)."
+  [agent-state {:keys [id status value out err ex eval-ms dump-path] :as params}]
+  (try
+    (let [ts (now-utc)]
+      (sq-execute! db-path
+                   ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
+       WHERE id=?"
+                    ts status value out err ex eval-ms dump-path id]))
+    (log/log! :info (str "Queued write #" id " persisted"))
+    (catch Exception e
+      (log/log! :error (str "Queued write #" id " failed: " (.getMessage e)))
+      (dump-to-fallback! (str "queued-update #" id) params))
+    (finally
+      (swap! write-queue-depth dec)))
+  agent-state)
+
+(def ^:private write-agent (agent nil))
+
+(set-error-handler! write-agent
+                    (fn [_ag ex]
+                      (log/log! :error (str "Write agent error (should not happen): " (.getMessage ex)))))
+
+;; --- Synchronous insert (needs the id back) ---
+
+(def ^:private insert-timeout-ms 5000)
 
 (defn insert-eval!
   "Insert a new eval row with status 'evaluating'. Returns the row id.
    Returns a negative temp ID if the pod times out."
   [{:keys [target port ns form form-original session-id intent] :as params}]
-  (let [result (with-db-timeout "insert-eval!"
-                 (fn []
-                   (let [ts (now-utc)
-                         rows (sq-query db-path
-                                        ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
+  (let [sentinel (Object.)
+        fut (future
+              (try
+                (let [ts (now-utc)
+                      rows (sq-query db-path
+                                     ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
        VALUES (?, ?, ?, ?, ?, ?, 'evaluating', ?, ?) RETURNING id"
-                                         ts target port ns form form-original session-id intent])]
-                     (:id (first rows))))
-                 (assoc params :op "insert" :status "evaluating"))]
-    (if (and (map? result) (:db-timeout result))
-      (- (System/currentTimeMillis))  ;; negative temp ID
-      result)))
+                                      ts target port ns form form-original session-id intent])]
+                  (:id (first rows)))
+                (catch Exception e {:db-error (.getMessage e)})))
+        result (deref fut insert-timeout-ms sentinel)]
+    (cond
+      (identical? result sentinel)
+      (do (log/log! :error (str "INSERT timeout (" insert-timeout-ms "ms) — pod stuck"))
+          (future-cancel fut)
+          (dump-to-fallback! "insert-eval!" (assoc params :op "insert" :status "evaluating"))
+          (- (System/currentTimeMillis)))
+
+      (and (map? result) (:db-error result))
+      (do (log/log! :error (str "INSERT error: " (:db-error result)))
+          (dump-to-fallback! "insert-eval!" (assoc params :op "insert" :status "evaluating"))
+          (- (System/currentTimeMillis)))
+
+      :else result)))
+
+;; --- Async update (fire-and-forget via queue) ---
 
 (defn update-eval!
-  "Update an eval row with results. No-op for negative (temp) IDs from timed-out inserts."
-  [{:keys [id status value out err ex eval-ms dump-path] :as params}]
+  "Queue an eval result for async persistence. Returns immediately.
+   No-op for negative (temp) IDs from timed-out inserts."
+  [{:keys [id] :as params}]
   (when (and id (pos? id))
-    (with-db-timeout "update-eval!"
-      (fn []
-        (let [ts (now-utc)]
-          (sq-execute! db-path
-                       ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
-       WHERE id=?"
-                        ts status value out err ex eval-ms dump-path id])))
-      (assoc params :op "update"))))
+    (swap! write-queue-depth inc)
+    (send-off write-agent do-queued-write! params)
+    nil))
+
+;; --- Read operations (synchronous, for dashboard/API) ---
 
 (defn recent-evals
   "Return last n evals, most recent first."
