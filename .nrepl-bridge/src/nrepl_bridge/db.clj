@@ -8,6 +8,16 @@
 (def ^:private db-dir ".workbench/db")
 (def ^:private db-path (str db-dir "/toolchain.db"))
 
+;; All pod calls go through this lock so reads and writes never
+;; interleave on the single stdin/stdout transit channel.
+(def ^:private pod-lock (Object.))
+
+(defn- sq-query [& args]
+  (locking pod-lock (apply sqlite/query args)))
+
+(defn- sq-execute! [& args]
+  (locking pod-lock (apply sqlite/execute! args)))
+
 (def ^:private schema
   "PRAGMA journal_mode=WAL;
 
@@ -48,7 +58,7 @@ CREATE TABLE IF NOT EXISTS evals (
   []
   (doseq [sql migrations]
     (try
-      (sqlite/execute! db-path (str sql ";"))
+      (sq-execute! db-path (str sql ";"))
       (catch Exception e
         ;; Ignore "duplicate column" errors -- migration already applied
         (when-not (clojure.string/includes? (.getMessage e) "duplicate column")
@@ -61,11 +71,11 @@ CREATE TABLE IF NOT EXISTS evals (
   (doseq [stmt (remove empty?
                        (map clojure.string/trim
                             (clojure.string/split schema #";")))]
-    (sqlite/execute! db-path (str stmt ";")))
+    (sq-execute! db-path (str stmt ";")))
   (apply-migrations!)
   ;; WAL mode + busy timeout reduce Windows file-locking contention
-  (sqlite/execute! db-path "PRAGMA journal_mode=WAL;")
-  (sqlite/execute! db-path "PRAGMA busy_timeout=5000;")
+  (sq-execute! db-path "PRAGMA journal_mode=WAL;")
+  (sq-execute! db-path "PRAGMA busy_timeout=5000;")
   (log/log! :info (str "SQLite initialized at " db-path " (WAL mode, busy_timeout=5000)"))
   db-path)
 
@@ -74,12 +84,12 @@ CREATE TABLE IF NOT EXISTS evals (
    rows left behind by a previous server crash or restart."
   []
   (let [ts (now-utc)
-        rows (sqlite/query db-path
-                           ["SELECT id FROM evals WHERE status = 'evaluating'"])]
+        rows (sq-query db-path
+                       ["SELECT id FROM evals WHERE status = 'evaluating'"])]
     (when (seq rows)
-      (sqlite/execute! db-path
-                       ["UPDATE evals SET status = 'error', err = 'Orphaned by server restart', resolved_at = ? WHERE status = 'evaluating'"
-                        ts])
+      (sq-execute! db-path
+                   ["UPDATE evals SET status = 'error', err = 'Orphaned by server restart', resolved_at = ? WHERE status = 'evaluating'"
+                    ts])
       (log/log! :info (str "Resolved " (count rows) " orphaned evaluating rows")))))
 
 (def ^:private db-write-timeout-ms 3000)
@@ -126,10 +136,10 @@ CREATE TABLE IF NOT EXISTS evals (
   (let [result (with-db-timeout "insert-eval!"
                  (fn []
                    (let [ts (now-utc)
-                         rows (sqlite/query db-path
-                                            ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
+                         rows (sq-query db-path
+                                        ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, session_id, intent)
        VALUES (?, ?, ?, ?, ?, ?, 'evaluating', ?, ?) RETURNING id"
-                                             ts target port ns form form-original session-id intent])]
+                                         ts target port ns form form-original session-id intent])]
                      (:id (first rows))))
                  (assoc params :op "insert" :status "evaluating"))]
     (if (and (map? result) (:db-timeout result))
@@ -143,38 +153,38 @@ CREATE TABLE IF NOT EXISTS evals (
     (with-db-timeout "update-eval!"
       (fn []
         (let [ts (now-utc)]
-          (sqlite/execute! db-path
-                           ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
+          (sq-execute! db-path
+                       ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
        WHERE id=?"
-                            ts status value out err ex eval-ms dump-path id])))
+                        ts status value out err ex eval-ms dump-path id])))
       (assoc params :op "update"))))
 
 (defn recent-evals
   "Return last n evals, most recent first."
   ([] (recent-evals 20))
   ([n]
-   (sqlite/query db-path
-                 (str "SELECT * FROM evals ORDER BY id DESC LIMIT " n))))
+   (sq-query db-path
+             (str "SELECT * FROM evals ORDER BY id DESC LIMIT " n))))
 
 (defn eval-by-id
   "Return a single eval by id."
   [id]
-  (first (sqlite/query db-path
-                       ["SELECT * FROM evals WHERE id=?" id])))
+  (first (sq-query db-path
+                   ["SELECT * FROM evals WHERE id=?" id])))
 
 (defn error-evals
   "Return recent evals with non-ok status."
   ([] (error-evals 20))
   ([n]
-   (sqlite/query db-path
-                 (str "SELECT * FROM evals WHERE status NOT IN ('ok', 'evaluating')
+   (sq-query db-path
+             (str "SELECT * FROM evals WHERE status NOT IN ('ok', 'evaluating')
            ORDER BY id DESC LIMIT " n))))
 
 (defn eval-stats
   "Return aggregate statistics."
   []
-  (first (sqlite/query db-path
-                       "SELECT
+  (first (sq-query db-path
+                   "SELECT
        COUNT(*) as total,
        SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) as ok,
        SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) as errors,
@@ -191,46 +201,46 @@ CREATE TABLE IF NOT EXISTS evals (
   [{:keys [status limit offset]
     :or {limit 50 offset 0}}]
   (if status
-    (sqlite/query db-path
-                  [(str "SELECT * FROM evals WHERE status=? ORDER BY id DESC LIMIT " limit " OFFSET " offset)
-                   status])
-    (sqlite/query db-path
-                  (str "SELECT * FROM evals ORDER BY id DESC LIMIT " limit " OFFSET " offset))))
+    (sq-query db-path
+              [(str "SELECT * FROM evals WHERE status=? ORDER BY id DESC LIMIT " limit " OFFSET " offset)
+               status])
+    (sq-query db-path
+              (str "SELECT * FROM evals ORDER BY id DESC LIMIT " limit " OFFSET " offset))))
 
 (defn pending-approvals
   "Return evals awaiting human approval."
   []
-  (sqlite/query db-path
-                "SELECT * FROM evals WHERE decision='pending' ORDER BY id ASC"))
+  (sq-query db-path
+            "SELECT * FROM evals WHERE decision='pending' ORDER BY id ASC"))
 
 (defn update-decision!
   "Set the decision and optional feedback for an eval."
   [id decision feedback]
-  (sqlite/execute! db-path
-                   ["UPDATE evals SET decision=?, feedback=? WHERE id=?"
-                    decision feedback id]))
+  (sq-execute! db-path
+               ["UPDATE evals SET decision=?, feedback=? WHERE id=?"
+                decision feedback id]))
 
 (defn insert-gated-eval!
   "Insert an eval row with decision='pending' (awaiting approval). Returns the row id."
   [{:keys [target port ns form form-original session-id]}]
   (let [ts (now-utc)
-        rows (sqlite/query db-path
-                           ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, decision, session_id)
+        rows (sq-query db-path
+                       ["INSERT INTO evals (created_at, target, nrepl_port, ns, form, form_original, status, decision, session_id)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', 'pending', ?) RETURNING id"
-                            ts target port ns form form-original session-id])]
+                        ts target port ns form form-original session-id])]
     (:id (first rows))))
 
 (defn eval-decision
   "Read the current decision for an eval."
   [id]
-  (:decision (first (sqlite/query db-path
-                                  ["SELECT decision FROM evals WHERE id=?" id]))))
+  (:decision (first (sq-query db-path
+                              ["SELECT decision FROM evals WHERE id=?" id]))))
 
 (defn duration-stats
   "Return duration percentiles (p50, p95, max) for successful evals."
   []
-  (let [rows (sqlite/query db-path
-                           "SELECT eval_ms FROM evals WHERE status='ok' AND eval_ms IS NOT NULL ORDER BY eval_ms ASC")
+  (let [rows (sq-query db-path
+                       "SELECT eval_ms FROM evals WHERE status='ok' AND eval_ms IS NOT NULL ORDER BY eval_ms ASC")
         durations (mapv :eval_ms rows)
         n (count durations)]
     (if (pos? n)
