@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Kill all nrepl-bridge babashka processes and orphaned pods.
-# Usage: bash .nrepl-bridge/kill-bridge.sh
+# Usage: bash .nrepl-bridge/shutdown-bridge.sh
 # Then run /mcp to restart the bridge.
 
 echo "=== nrepl-bridge kill script ==="
