@@ -117,21 +117,39 @@ CREATE TABLE IF NOT EXISTS evals (
 
 (def write-queue-depth (atom 0))
 
+;; Ring buffer of last 50 write outcomes for the dashboard health bar.
+;; Each entry: {:id N :outcome :ok|:failed :ms elapsed}
+(def ^:private write-history-size 50)
+(def write-history (atom []))
+
+(defn- record-write-outcome! [id outcome ms]
+  (swap! write-history
+         (fn [v]
+           (let [v (conj v {:id id :outcome outcome :ms ms})]
+             (if (> (count v) write-history-size)
+               (subvec v (- (count v) write-history-size))
+               v)))))
+
 (defn- do-queued-write!
   "Agent action: persist one eval update. Never throws (would halt the agent)."
   [agent-state {:keys [id status value out err ex eval-ms dump-path] :as params}]
-  (try
-    (let [ts (now-utc)]
-      (sq-execute! db-path
-                   ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
+  (let [t0 (System/currentTimeMillis)]
+    (try
+      (let [ts (now-utc)]
+        (sq-execute! db-path
+                     ["UPDATE evals SET resolved_at=?, status=?, value=?, out=?, err=?, ex=?, eval_ms=?, dump_path=?
        WHERE id=?"
-                    ts status value out err ex eval-ms dump-path id]))
-    (log/log! :info (str "Queued write #" id " persisted"))
-    (catch Exception e
-      (log/log! :error (str "Queued write #" id " failed: " (.getMessage e)))
-      (dump-to-fallback! (str "queued-update #" id) params))
-    (finally
-      (swap! write-queue-depth dec)))
+                      ts status value out err ex eval-ms dump-path id]))
+      (let [wms (- (System/currentTimeMillis) t0)]
+        (log/log! :info (str "Queued write #" id " persisted (" wms "ms)"))
+        (record-write-outcome! id :ok wms))
+      (catch Exception e
+        (let [wms (- (System/currentTimeMillis) t0)]
+          (log/log! :error (str "Queued write #" id " failed (" wms "ms): " (.getMessage e)))
+          (record-write-outcome! id :failed wms)
+          (dump-to-fallback! (str "queued-update #" id) params)))
+      (finally
+        (swap! write-queue-depth dec))))
   agent-state)
 
 (def ^:private write-agent (agent nil))

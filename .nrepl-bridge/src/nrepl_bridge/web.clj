@@ -204,11 +204,31 @@
              [:div {:style "color:#fbbf24;font-weight:bold"} (str missed " missed DB write" (when (> missed 1) "s") " — pod timeout")]
              [:div {:style "color:#d97706;font-size:12px"} (str "Records saved to .workbench/db/missed-writes.edn — review and re-import if needed")]]]))
 
-       ;; Write queue indicator
-       (let [qdepth @db/write-queue-depth]
-         (when (pos? qdepth)
-           [:div {:style "background:#1e1b4b;border:1px solid #6366f1;border-radius:6px;padding:8px 14px;margin-bottom:12px;color:#a5b4fc;font-size:13px"}
-            (str qdepth " write" (when (> qdepth 1) "s") " queued")]))
+       ;; DB write health bar
+       (let [history @db/write-history
+             qdepth  @db/write-queue-depth
+             ok-n    (count (filter #(= :ok (:outcome %)) history))
+             fail-n  (count (filter #(= :failed (:outcome %)) history))
+             total-n (count history)]
+         (when (or (pos? total-n) (pos? qdepth))
+           [:div {:style "margin-bottom:12px"}
+            [:div {:style "display:flex;align-items:center;gap:10px;margin-bottom:4px"}
+             [:span {:style "color:#888;font-size:12px"} "DB writes"]
+             (when (pos? qdepth)
+               [:span {:style "color:#a5b4fc;font-size:12px"} (str qdepth " queued")])
+             (when (pos? total-n)
+               [:span {:style "color:#666;font-size:11px"}
+                (str ok-n "/" total-n " ok"
+                     (when (pos? fail-n) (str ", " fail-n " failed")))])]
+            [:div {:style "display:flex;gap:2px;align-items:center"
+                   :title "Last 50 DB writes: green=ok, red=failed, blue=queued"}
+             (for [{:keys [id outcome ms]} history]
+               [:div {:style (str "width:8px;height:16px;border-radius:2px;background:"
+                                  (case outcome :ok "#22c55e" :failed "#ef4444" "#6b7280"))
+                      :title (str "#" id " " (name outcome) " " ms "ms")}])
+             (for [_ (range qdepth)]
+               [:div {:style "width:8px;height:16px;border-radius:2px;background:#6366f1"
+                      :title "queued"}])]]))
 
        ;; Pending approvals (prominent, at top)
        (pending-section pending)
