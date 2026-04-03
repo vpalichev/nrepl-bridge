@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-03i")
+(def bridge-build "2026-04-03j")
 
 (defn- kill-previous-bridges!
   "Find and kill any previous bb.exe processes running server.bb (excluding ourselves)."

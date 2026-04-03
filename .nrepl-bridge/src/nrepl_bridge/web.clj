@@ -390,7 +390,7 @@
           tr.children[7].textContent = data.eval_ms != null ? data.eval_ms + 'ms' : '';
         }
 
-        // Delayed stats refresh (does NOT reload page — preserves WS-updated rows)
+        // Delayed stats + health bar refresh (preserves WS-updated rows)
         var refreshTimer = null;
         function scheduleRefresh() {
           if (refreshTimer) clearTimeout(refreshTimer);
@@ -409,8 +409,41 @@
                   cards[7].textContent = (d.duration.p95 || 0) + 'ms';
                 }
               }
+              // Update health bar
+              if (d['write-health']) {
+                var wh = d['write-health'];
+                var hist = wh.history || [];
+                var qd = wh['queue-depth'] || 0;
+                var maxB = 50;
+                var shownQ = Math.min(qd, maxB - hist.length);
+                var emptyN = Math.max(0, maxB - hist.length - shownQ);
+                var bar = document.querySelector('[title*=\"Last 50 DB writes\"]');
+                if (bar) {
+                  var html = '';
+                  for (var i = 0; i < hist.length; i++) {
+                    var h = hist[i];
+                    var c = h.outcome === 'ok' ? '#22c55e' : h.outcome === 'failed' ? '#ef4444' : '#6b7280';
+                    html += '<div style=\"width:8px;min-width:8px;height:16px;border-radius:2px;background:' + c + '\" title=\"#' + h.id + ' ' + h.outcome + ' ' + h.ms + 'ms\"></div>';
+                  }
+                  for (var j = 0; j < shownQ; j++) html += '<div style=\"width:8px;min-width:8px;height:16px;border-radius:2px;background:#6366f1\" title=\"queued\"></div>';
+                  for (var k = 0; k < emptyN; k++) html += '<div style=\"width:8px;min-width:8px;height:16px;border-radius:2px;background:#1a1a2e\"></div>';
+                  bar.innerHTML = html;
+                }
+                // Update label
+                var okN = hist.filter(function(h) { return h.outcome === 'ok'; }).length;
+                var failN = hist.filter(function(h) { return h.outcome === 'failed'; }).length;
+                var labelEl = bar && bar.previousElementSibling;
+                if (labelEl) {
+                  var spans = labelEl.querySelectorAll('span');
+                  // Update queued span
+                  if (spans.length >= 2) spans[1].textContent = qd > 0 ? qd + ' queued' : '';
+                  // Update ok/failed span
+                  var statsSpan = spans.length >= 3 ? spans[2] : (spans.length >= 2 ? spans[1] : null);
+                  if (statsSpan && hist.length > 0) statsSpan.textContent = okN + '/' + hist.length + ' ok' + (failN > 0 ? ', ' + failN + ' failed' : '');
+                }
+              }
             }).catch(function() {});
-          }, 8000);
+          }, 3000);
         }
 
         // WebSocket for live updates
@@ -529,7 +562,10 @@
       ;; JSON API: stats
       (and (= method :get) (= path "/api/stats"))
       (json-response {:stats (db/eval-stats)
-                      :duration (db/duration-stats)})
+                      :duration (db/duration-stats)
+                      :write-health {:history @db/write-history
+                                     :queue-depth @db/write-queue-depth
+                                     :missed @db/missed-write-count}})
 
       ;; JSON API: logs
       (and (= method :get) (= path "/api/logs"))
