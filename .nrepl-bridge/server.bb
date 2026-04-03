@@ -179,7 +179,7 @@
     (swap! startup-checks conj (assoc result :name name))
     result))
 
-(def bridge-build "2026-04-03d")
+(def bridge-build "2026-04-03e")
 
 (defn run-startup-checks! []
   (log/init!)
@@ -586,13 +586,26 @@
                        (< uptime-sec 3600) (str (quot uptime-sec 60) "m " (rem uptime-sec 60) "s")
                        :else               (str (quot uptime-sec 3600) "h " (quot (rem uptime-sec 3600) 60) "m"))
           dashboard  (or @web/!actual-port (:dashboard-port @config))
-          missed     @db/missed-write-count]
+          missed     @db/missed-write-count
+          history    @db/write-history
+          qdepth     @db/write-queue-depth
+          ok-writes  (count (filter #(= :ok (:outcome %)) history))
+          fail-writes (count (filter #(= :failed (:outcome %)) history))
+          ok-ms      (let [ms (keep #(when (= :ok (:outcome %)) (:ms %)) history)]
+                       (when (seq ms) (quot (reduce + ms) (count ms))))
+          failed-ids (mapv :id (filter #(= :failed (:outcome %)) history))]
       {:content [{:type "text"
                   :text (str "build: " bridge-build
                              "\nuptime: " uptime-str
                              "\ndashboard: http://localhost:" dashboard
                              "\nbackend port: " (get-backend-port)
-                             "\nmissed DB writes: " missed
+                             "\n\nDB write health:"
+                             "\n  queued: " qdepth
+                             "\n  recent writes: " ok-writes "/" (count history) " ok"
+                             (when ok-ms (str ", avg " ok-ms "ms"))
+                             (when (pos? fail-writes)
+                               (str "\n  FAILED: " fail-writes " — eval IDs: " (str/join ", " (map #(str "#" %) failed-ids))))
+                             "\n  total missed (session): " missed
                              (when (pos? missed) (str " (see .workbench/db/missed-writes.edn)")))}]})
 
     "shutdown"
