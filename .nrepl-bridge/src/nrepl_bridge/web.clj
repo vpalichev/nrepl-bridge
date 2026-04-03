@@ -444,8 +444,7 @@
           });
         }, 1000);
 
-        // Auto-refresh every 30s as fallback
-        setTimeout(function() { location.reload(); }, 30000);
+        // No auto-refresh — WS handles live updates, scheduleRefresh handles stats.
       ")]]]])))
 
 ;; --- HTTP handlers ---

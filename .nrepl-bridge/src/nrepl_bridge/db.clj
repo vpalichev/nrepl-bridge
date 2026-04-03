@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS evals (
   form_original  TEXT,
   status         TEXT NOT NULL DEFAULT 'pending'
                  CHECK (status IN ('pending', 'evaluating', 'ok',
-                                   'error', 'timeout', 'syntax-error')),
+                                   'error', 'exception', 'class-not-found',
+                                   'timeout', 'syntax-error', 'db-timeout')),
   value          TEXT,
   out            TEXT,
   err            TEXT,
@@ -53,6 +54,34 @@ CREATE TABLE IF NOT EXISTS evals (
   ["ALTER TABLE evals ADD COLUMN decision TEXT DEFAULT 'auto' CHECK (decision IN ('auto', 'pending', 'approved', 'rejected'))"
    "ALTER TABLE evals ADD COLUMN feedback TEXT"
    "ALTER TABLE evals ADD COLUMN intent TEXT"])
+
+(defn- widen-status-check!
+  "Recreate evals table with a wider status CHECK to allow 'exception', 'class-not-found', 'db-timeout'.
+   Idempotent: checks if migration is needed by attempting an impossible insert."
+  []
+  (let [needs-migration?
+        (try
+          ;; If this fails with CHECK constraint, old schema is in place
+          (sq-execute! db-path "INSERT INTO evals (created_at, target, nrepl_port, ns, form, status) VALUES ('_test','backend',0,'user','_test','exception')")
+          ;; Succeeded — clean up test row and we're done
+          (sq-execute! db-path "DELETE FROM evals WHERE created_at='_test'")
+          false
+          (catch Exception _ true))]
+    (when needs-migration?
+      (log/log! :info "Widening status CHECK constraint (one-time migration)")
+      (sq-execute! db-path "ALTER TABLE evals RENAME TO evals_old")
+      (sq-execute! db-path
+                   "CREATE TABLE evals (
+           id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, resolved_at TEXT,
+           target TEXT NOT NULL CHECK (target IN ('backend','frontend')),
+           nrepl_port INTEGER NOT NULL, ns TEXT DEFAULT 'user', form TEXT NOT NULL, form_original TEXT,
+           status TEXT NOT NULL DEFAULT 'pending', value TEXT, out TEXT, err TEXT, ex TEXT,
+           eval_ms INTEGER, dump_path TEXT, session_id TEXT,
+           decision TEXT DEFAULT 'auto' CHECK (decision IN ('auto','pending','approved','rejected')),
+           feedback TEXT, intent TEXT)")
+      (sq-execute! db-path "INSERT INTO evals SELECT * FROM evals_old")
+      (sq-execute! db-path "DROP TABLE evals_old")
+      (log/log! :info "Status CHECK migration complete"))))
 
 (defn- apply-migrations!
   "Apply schema migrations. Each is idempotent (catches 'duplicate column' errors)."
@@ -74,6 +103,7 @@ CREATE TABLE IF NOT EXISTS evals (
                             (clojure.string/split schema #";")))]
     (sq-execute! db-path (str stmt ";")))
   (apply-migrations!)
+  (widen-status-check!)
   ;; WAL mode + busy timeout reduce Windows file-locking contention
   (sq-execute! db-path "PRAGMA journal_mode=WAL;")
   (sq-execute! db-path "PRAGMA busy_timeout=5000;")
@@ -130,6 +160,15 @@ CREATE TABLE IF NOT EXISTS evals (
                (subvec v (- (count v) write-history-size))
                v)))))
 
+;; Allowed status values in the CHECK constraint (old DBs may lack 'exception' etc.)
+;; Map unknown statuses to 'error' so the write never fails on a constraint.
+(def ^:private allowed-statuses
+  #{"pending" "evaluating" "ok" "error" "exception" "class-not-found"
+    "timeout" "syntax-error" "db-timeout"})
+
+(defn- normalize-status [s]
+  (if (allowed-statuses s) s "error"))
+
 (def ^:private write-audit-path ".workbench/db/write-audit.edn")
 
 (defn- audit-write!
@@ -143,7 +182,8 @@ CREATE TABLE IF NOT EXISTS evals (
   "Agent action: persist one eval update. Never throws (would halt the agent)."
   [agent-state {:keys [id status value out err ex eval-ms dump-path
                        form target ns] :as params}]
-  (let [t0 (System/currentTimeMillis)]
+  (let [t0 (System/currentTimeMillis)
+        status (normalize-status status)]
     (try
       (let [ts (now-utc)]
         (sq-execute! db-path
