@@ -176,6 +176,11 @@ Located in `.nrepl-bridge/test/examples/`:
 These test application code (`proof.*` namespaces) that does not exist in the
 bare template. Copy and adapt them when building your app.
 
+## Injecting into an existing project
+
+See **INJECTION.md** for step-by-step instructions on adding nrepl-bridge
+to a brownfield Clojure project that already has its own deps.edn, src/, etc.
+
 ## Tag history
 
 | Tag           | Description                                        |
@@ -184,3 +189,16 @@ bare template. Copy and adapt them when building your app.
 | `template/v2` | Full-stack: shadow-cljs as default REPL            |
 | `template/v3` | Test suite reorganized for bare template use       |
 | `template/v4` | Split src/ into src/clj, src/cljs, src/cljc        |
+
+### Changes on master since template/v4
+
+- Async DB writes via Clojure agent (MCP response never blocked)
+- Dashboard: live WebSocket updates with inline DOM manipulation
+- Dashboard: DB write health bar (50-block indicator)
+- Dashboard: stats-only API refresh instead of full page reload
+- SQLite CHECK constraint widened (exception, class-not-found, db-timeout)
+- Migration to widen constraint on existing DBs automatically
+- Write audit log at `.workbench/db/write-audit.edn`
+- Auto-kill zombie bridge processes on startup (project-scoped)
+- `bridge_control status` reports full write health details
+- `shutdown-bridge.sh` for manual process cleanup

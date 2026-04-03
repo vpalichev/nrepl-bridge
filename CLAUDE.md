@@ -76,8 +76,10 @@ The actual dashboard URL is always available at `.workbench/dashboard.url`.
 
 Use the `bridge_control` tool to manage the MCP server:
 
-`bridge_control {action: "status"}` — returns build version, uptime, dashboard URL, backend port, missed DB writes
+`bridge_control {action: "status"}` — returns build version, uptime, dashboard URL, backend port, DB write health (queue depth, ok/total with avg latency, failed eval IDs, missed count)
 `bridge_control {action: "shutdown"}` — stops the bridge process. Use `/mcp` to restart.
+
+On restart, the bridge automatically kills any zombie processes from the same project before initializing.
 
 ## How to Evaluate Clojure
 
@@ -188,16 +190,20 @@ your-project/
   resources/public/index.html -- frontend entry point
   .nrepl-bridge/             -- bridge infrastructure (do not edit)
     server.bb                -- MCP server entrypoint
-    schema.sql               -- SQLite schema
+    schema.sql               -- SQLite schema (reference; actual DB is in .workbench/)
     diagnose.bb              -- troubleshooting tool
+    shutdown-bridge.sh       -- manual kill script (usually not needed, /mcp handles it)
     src/nrepl_bridge/        -- server source
     test/                    -- bridge acceptance tests
     test/examples/           -- example app-level tests (copy and adapt)
     ACTIVATION.md            -- session preflight checks
   .workbench/                -- runtime data (gitignored)
     db/toolchain.db          -- SQLite eval history
+    db/write-audit.edn       -- detailed log of every DB write attempt
+    db/missed-writes.edn     -- fallback for writes that failed (append-only)
     logs/nrepl-bridge.log    -- MCP server diagnostics
     dumps/eval-NNN.edn       -- full results for large evals
+    dashboard.url            -- actual dashboard URL after port binding
 ```
 
 ## Starting the REPL
