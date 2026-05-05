@@ -39,6 +39,29 @@ DOWNSTREAM-ONLY -->
 
 A Babashka MCP server that gives you a shell-free path to evaluate Clojure and ClojureScript against this project's running nREPL servers. Every eval is recorded in SQLite under `.workbench/db/toolchain.db`. The server is registered in `.mcp.json` and launches automatically with your session.
 
+## Required Project Deps
+
+The workflows below (especially `add-lib`, `clj-reload`, `clj-kondo`) assume these libraries are on the nREPL runtime classpath. The canonical setup is a dedicated `:nrepl` alias in `deps.edn`:
+
+```clojure
+:nrepl {:extra-deps {nrepl/nrepl                 {:mvn/version "1.7.0"}
+                     cider/cider-nrepl           {:mvn/version "0.59.0"}
+                     org.clojure/tools.deps      {:mvn/version "0.29.1598"}
+                     io.github.tonsky/clj-reload {:mvn/version "1.0.0"}
+                     clj-kondo/clj-kondo         {:mvn/version "2026.04.15"}}
+        :main-opts  ["-m" "nrepl.cmdline"
+                     "--port" "<your-port>"
+                     "--middleware" "[cider.nrepl/cider-middleware]"]}
+```
+
+These versions are reference points, not pinned ceilings -- prefer the latest stable on Clojars (or Maven Central for `org.clojure/*`). If you find a newer release, use it.
+
+If any of these are missing, the workflow below will not work. Specifically:
+
+- Missing `org.clojure/tools.deps` -> `(clojure.repl.deps/add-lib ...)` throws `ClassNotFoundException`. The `clj` launcher uses tools.deps to compute the classpath but does NOT put it on your runtime classpath; you have to add it explicitly.
+- Missing `io.github.tonsky/clj-reload` -> the reload workflow below cannot be followed.
+- Missing `clj-kondo/clj-kondo` -> the post-edit lint step cannot be followed.
+
 ## Port Discovery
 
 The bridge finds the nREPL port automatically, checking in order:
@@ -104,14 +127,18 @@ Do NOT use curl, wget, Python requests, PowerShell `Invoke-WebRequest`, or any s
 
 Do NOT use Playwright, Puppeteer, or Selenium via Python. Use etaoin through `nrepl_send` with `target: "backend"`.
 
-If a library is needed but not in deps.edn, add it dynamically through `nrepl_send` via `clojure.repl.deps/add-lib` rather than editing deps.edn and restarting the REPL. Persist to deps.edn only after confirming it works.
+If a library is needed but not in deps.edn, add it dynamically through `nrepl_send` via `clojure.repl.deps/add-lib` rather than editing deps.edn and restarting the REPL. Persist to deps.edn only after confirming it works. (If `add-lib` throws `ClassNotFoundException`, the `:nrepl` alias is missing `org.clojure/tools.deps` -- see Required Project Deps above.)
 
 ## After Every Source File Edit
 
 Run this verification sequence. Do not skip steps.
 
 1. Confirm the paren repair hook fired (check tool output for "hook succeeded")
-2. Run clj-kondo as a library: `(clj-kondo.core/run! {:lint ["path/to/file.clj"]})`
+2. Run clj-kondo as a library (require once per REPL session, then lint):
+   ```clojure
+   (require 'clj-kondo.core)
+   (clj-kondo.core/run! {:lint ["path/to/file.clj"]})
+   ```
 3. Reload changed namespaces in dependency order using clj-reload (see below)
 4. Test pure functions adversarially with edge cases through `nrepl_send`
 

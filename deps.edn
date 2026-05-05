@@ -1,11 +1,17 @@
 {:paths ["src/clj" "src/cljs" "src/cljc" "resources"]
- :deps  {thheller/shadow-cljs  {:mvn/version "2.28.5"}
-         reagent/reagent        {:mvn/version "1.2.0"}
-         re-frame/re-frame      {:mvn/version "1.3.0"}
-         etaoin/etaoin           {:mvn/version "1.0.40"}
-         clj-http/clj-http      {:mvn/version "3.13.0"}
-         clj-kondo/clj-kondo    {:mvn/version "2024.08.01"}
-         io.github.tonsky/clj-reload {:mvn/version "1.0.0"}}
+ :deps  {thheller/shadow-cljs         {:mvn/version "2.28.5"}
+         reagent/reagent              {:mvn/version "1.2.0"}
+         re-frame/re-frame            {:mvn/version "1.3.0"}
+         etaoin/etaoin                {:mvn/version "1.0.40"}
+         clj-http/clj-http            {:mvn/version "3.13.0"}
+         clj-kondo/clj-kondo          {:mvn/version "2026.04.15"}
+         io.github.tonsky/clj-reload  {:mvn/version "1.0.0"}}
  :aliases
- {:nrepl {:extra-deps {nrepl/nrepl {:mvn/version "1.3.0"}}
-          :main-opts  ["-m" "nrepl.cmdline"]}}}
+ ;; Dev-tooling alias used by the bridge's documented workflow.
+ ;; Versions are reference points -- prefer latest stable on Clojars
+ ;; (or Maven Central for org.clojure/* artifacts).
+ {:nrepl {:extra-deps {nrepl/nrepl            {:mvn/version "1.7.0"}
+                       cider/cider-nrepl      {:mvn/version "0.59.0"}
+                       org.clojure/tools.deps {:mvn/version "0.29.1598"}}
+          :main-opts  ["-m" "nrepl.cmdline"
+                       "--middleware" "[cider.nrepl/cider-middleware]"]}}}

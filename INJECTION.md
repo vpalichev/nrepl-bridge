@@ -71,18 +71,54 @@ section. Add any project-specific instructions above it.
 Do not remove the `(do not remove)` marker — it helps identify the section
 for future template updates.
 
-## Step 5: Optional dependencies
+## Step 5: Required dependencies
 
-The CLAUDE.md workflow references these libraries. Add to `deps.edn` if you
-want the full post-edit verification workflow:
+The CLAUDE.md workflow the bridge installs in your project actively instructs
+the LLM to use `clojure.repl.deps/add-lib`, `clj-reload`, and `clj-kondo`. If
+they are missing, the LLM follows the documented workflow and crashes on the
+first attempt (e.g. `add-lib` throws `ClassNotFoundException` when
+`org.clojure/tools.deps` is absent from the runtime classpath). Therefore
+these are required, not optional.
+
+Use a dedicated `:nrepl` alias rather than putting them in `:deps` -- they
+are dev-tooling, they should not be in the production classpath. Paste this
+into your `deps.edn`:
 
 ```clojure
-;; In :deps or an alias
-clj-reload/clj-reload {:mvn/version "0.7.1"}    ;; namespace reloading in dependency order
-clj-kondo/clj-kondo   {:mvn/version "2024.11.14"} ;; lint as library via nrepl_send
+:nrepl {:extra-deps {nrepl/nrepl                 {:mvn/version "1.7.0"}
+                     cider/cider-nrepl           {:mvn/version "0.59.0"}
+                     org.clojure/tools.deps      {:mvn/version "0.29.1598"}
+                     io.github.tonsky/clj-reload {:mvn/version "1.0.0"}
+                     clj-kondo/clj-kondo         {:mvn/version "2026.04.15"}}
+        :main-opts  ["-m" "nrepl.cmdline"
+                     "--port" "<your-port>"
+                     "--middleware" "[cider.nrepl/cider-middleware]"]}
 ```
 
-These are optional. The bridge itself works without them.
+Then start nREPL with `clj -M:nrepl`.
+
+**The version numbers above are reference points, not pinned ceilings.**
+These are dev tooling -- it is normally safe (and preferred) to use the
+latest stable release of each. If a newer version exists on Clojars (or
+Maven Central, for `org.clojure/*` artifacts which are not on Clojars),
+prefer it. Bump on injection, bump again whenever convenient. The exact
+version listed here will go stale; the latest stable will not.
+
+What each one is for:
+
+- `nrepl/nrepl` + `cider/cider-nrepl` -- the nREPL server and middleware that
+  power `nrepl_send`. Without these, the bridge has nothing to talk to.
+- `org.clojure/tools.deps` -- required at runtime for
+  `clojure.repl.deps/add-lib` to work. The `clj` launcher uses tools.deps
+  to compute your classpath, but does NOT add it to your runtime classpath;
+  you have to add it explicitly.
+- `io.github.tonsky/clj-reload` -- the bridge's CLAUDE.md tells the LLM to
+  use `(reload/reload)` rather than `(require ... :reload)` to avoid
+  load-order errors. Without clj-reload on the classpath, that instruction
+  fails.
+- `clj-kondo/clj-kondo` -- the bridge's "After Every Source File Edit"
+  step calls clj-kondo as a library through `nrepl_send`. Without it on
+  the classpath, the lint step fails.
 
 ## Step 6: Verify
 
