@@ -1,0 +1,31 @@
+# Portable line endings -- normalize to LF in repo, check out native on Windows.
+# Without this, every edit on Windows produces "LF will be replaced by CRLF" warnings
+# and re-clones across machines may differ in line endings.
+
+* text=auto eol=lf
+
+# Babashka scripts must be LF on every platform (shebang + bb is line-sensitive).
+*.bb         eol=lf text
+
+# Clojure and EDN sources -- LF.
+*.clj        eol=lf text
+*.cljs       eol=lf text
+*.cljc       eol=lf text
+*.edn        eol=lf text
+
+# Web assets -- LF.
+*.json       eol=lf text
+*.md         eol=lf text
+*.html       eol=lf text
+*.css        eol=lf text
+*.js         eol=lf text
+
+# Binary -- never touch.
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.zip        binary
+*.gz         binary
+*.jar        binary
