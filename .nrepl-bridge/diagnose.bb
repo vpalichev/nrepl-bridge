@@ -27,14 +27,18 @@
   (check! "bb found on PATH" (some? bb-path) (str "which bb -> " (pr-str bb-path)))
   (check! "bb version" (some? bb-ver) (str "bb --version -> " (pr-str bb-ver))))
 
-;; 2. Settings file exists and is valid JSON
+;; 2. MCP config exists and is valid JSON
+;; The canonical path is .mcp.json at project root (Claude Code reads this).
+;; Older versions of Claude Code used .claude/settings.json, which is no
+;; longer where bridge servers are registered.
 (println)
-(println "--- Layer 2: Settings ---")
-(let [settings-path ".claude/settings.json"
-      exists? (.exists (java.io.File. settings-path))]
-  (check! "settings.json exists" exists? (str "at " settings-path))
+(println "--- Layer 2: MCP config ---")
+(def ^:dynamic *bridge-args* nil)   ;; populated below; used by Layer 5
+(let [mcp-path ".mcp.json"
+      exists? (.exists (java.io.File. mcp-path))]
+  (check! ".mcp.json exists" exists? (str "at " mcp-path))
   (when exists?
-    (let [content (slurp settings-path :encoding "UTF-8")]
+    (let [content (slurp mcp-path :encoding "UTF-8")]
       (try
         (let [parsed (json/parse-string content true)
               mcp (:mcpServers parsed)
@@ -50,9 +54,31 @@
             (check! "command is bb" (= "bb" (:command bridge))
                     (str "command=" (:command bridge)))
             (check! "args present" (seq (:args bridge))
-                    (str "args=" (pr-str (:args bridge))))))
+                    (str "args=" (pr-str (:args bridge))))
+            (alter-var-root #'*bridge-args* (constantly (vec (:args bridge))))))
         (catch Exception e
           (check! "JSON parses" false (.getMessage e)))))))
+
+;; Helper: extract a flag value from a bridge args vector.
+;; e.g. (arg-value ["server.bb" "--backend-port" "22400"] "--backend-port") => "22400"
+(defn arg-value [args flag]
+  (when args
+    (->> (partition 2 1 args)
+         (some (fn [[a b]] (when (= a flag) b))))))
+
+;; Resolve the actual nREPL backend port from .mcp.json (fallback: 17888 only
+;; if config is missing entirely -- previously this was hardcoded).
+(def backend-port
+  (or (some-> (arg-value *bridge-args* "--backend-port") parse-long)
+      17888))
+(def dashboard-port
+  (or (some-> (arg-value *bridge-args* "--dashboard-port") parse-long)
+      9599))
+
+(println)
+(println (str "  (using backend-port=" backend-port
+              ", dashboard-port=" dashboard-port
+              " from .mcp.json)"))
 
 ;; 3. Script file exists
 (println)
@@ -81,9 +107,9 @@
 (let [server (try
                (proc/process
                 {:cmd ["bb" ".nrepl-bridge/server.bb"
-                       "--backend-port" "17888"
+                       "--backend-port" (str backend-port)
                        "--shadow-build" ":app"
-                       "--dashboard-port" "9599"]
+                       "--dashboard-port" (str dashboard-port)]
                  :in :pipe :out :pipe :err :pipe
                  :dir "."})
                (catch Exception e
@@ -208,16 +234,16 @@
           (.close out)
           (proc/destroy server))))))
 
-;; 6. Check nREPL connectivity
+;; 6. Check nREPL connectivity (uses backend-port resolved from .mcp.json)
 (println)
 (println "--- Layer 6: nREPL connectivity ---")
 (let [nrepl-ok? (try
                   (let [sock (java.net.Socket.)]
-                    (.connect sock (java.net.InetSocketAddress. "127.0.0.1" 17888) 2000)
+                    (.connect sock (java.net.InetSocketAddress. "127.0.0.1" backend-port) 2000)
                     (.close sock)
                     true)
                   (catch Exception _ false))]
-  (check! "nREPL on port 17888 reachable" nrepl-ok?
+  (check! (str "nREPL on port " backend-port " reachable") nrepl-ok?
           (if nrepl-ok? "TCP connect succeeded" "Cannot connect -- is shadow-cljs running?")))
 
 ;; 7. Check log file for recent errors
